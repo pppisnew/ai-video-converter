@@ -48,3 +48,20 @@ tools/ffmpeg/
 
 # --- Test artifacts ---
 tests/**/TempMedia/
+
+# --- Publish output ---
+publish/
+publish-*/
+pub-*.txt\ne2e-*.ps1\nuiauto.cs\nui-*.png\ne2e-sample.mp4
+
+# --- Publish output and local test scratch ---
+publish/
+publish-*/
+pub-*.txt
+pub2-*.txt
+e2e-*.ps1
+t.ps1
+t2.ps1
+uiauto.cs
+ui-*.png
+e2e-sample.mp4
