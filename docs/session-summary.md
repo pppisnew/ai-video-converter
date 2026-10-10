@@ -54,3 +54,49 @@ Windows 桌面端视频格式转换器：加载视频信息与缩略图，基于
 
 
 
+
+## 实现结果（2026-10-10）
+
+技术栈：WinUI 3（WinAppSDK 2.5.1）+ C# + .NET 10，unpackaged，MVVM（CommunityToolkit.Mvvm 8.4）
+
+- 构建：0 警告 0 错误
+- 测试：**59/59 通过**（解析器/映射/定位/预设单测 + 真实 ffmpeg 9.0.1 集成测试：
+  6 种目标格式转换、进度单调性、取消清理、中文与空格路径）
+- 发布：`dotnet publish` 产物自带 `tools/ffmpeg/`（138MB x 2），发布版启动后
+  状态栏显示"ffmpeg 就绪 · 随包捆绑 · n9.0.1-11"
+- ffmpeg 获取：`tools/fetch-ffmpeg.ps1`（winget 优先、GitHub 直链兜底），
+  本机 GitHub 下载 CDN 不可达，实际通过 winget 的 BtbN.FFmpeg.GPL.9.0 取得
+
+### 自动化验证通过
+
+应用启动与界面渲染、ffmpeg 三级定位（仓库目录/随包捆绑/PATH）、
+按钮启用禁用状态、文件加载后全部媒体信息字段、缩略图渲染、输出路径自动填充、
+转换产物有效性（ffprobe 验证 720p h264+aac）、发布版自包含可运行。
+
+### 待人工验证（GUI 自动化不稳定项）
+
+1. **文件选择对话框交互**：新版 Windows 选择器（PickerHost 进程）对 UI 自动化不友好，
+   自动键入路径不稳定（中文输入法下必然乱码，英文输入法下也偶发失败）。
+   请手动点"选择视频文件"选一个视频，确认信息与缩略图正常显示。
+2. **拖拽加载**：从资源管理器拖视频到左下角拖放区。
+3. **转换过程可视化**：点"开始转换"观察进度条/百分比/倍速滚动，确认完成后状态栏提示。
+4. **取消转换**：转换中点"取消"，确认状态栏提示"已取消转换"且输出文件被删除。
+5. **切换目标格式**：分别选 AVI / WebM / MP3 转换，确认产物可用（MP3 应只有音频）。
+6. **ffmpeg 缺失场景**：把 tools/ffmpeg 改名后启动，确认显示"未找到 ffmpeg"、
+   右列禁用、"获取 ffmpeg"按钮可见可点。
+
+### 踩坑记录（已写入 .trellis/spec/）
+
+- unpackaged WinUI 3 的 `dotnet publish` 不带 .xbf/.pri，运行数秒后崩在 Microsoft.UI.Xaml.dll
+  （事件码 c000027b，无 stderr）→ csproj 加 `CopyXamlBinariesToPublish` 目标
+- 本机用户级 NuGet.Config 的 packageSources 为空导致 NU1100 → 仓库根放 NuGet.Config（含国内镜像）
+- `x:Bind` + Converter 在 Window 根元素上报 CS1503 → 改由 VM 暴露 Brush/Visibility
+- WinUI 3 无 Window.Width/Height、Panel 无 IsEnabled、FileSavePicker 用 FileTypeChoices
+- MVVM Toolkit 的 partial 属性+初始值设定项在本工具链报 CS8050 → 回退字段式 + NoWarn MVVMTK0045
+- PowerShell：`$pid` 是只读变量；函数内委托里 `$script:x` 与局部变量不是同一个；
+  命令行传中文字面量会被转码损坏（自动化脚本要用码点构造或用 ASCII AutomationId）
+
+## 当前状态
+
+- Trellis 任务 `10-10-video-converter` 进行中，代码已提交 3 个 checkpoint
+- 剩余：Phase 3.4 提交剩余变更
