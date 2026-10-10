@@ -75,15 +75,24 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void DropZone_DragOver(object sender, DragEventArgs e)
+    private void Root_DragOver(object sender, DragEventArgs e)
     {
         e.AcceptedOperation = DataPackageOperation.Copy;
         e.DragUIOverride.Caption = "释放以加载视频";
         e.Handled = true;
+        DropZone.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AccentFillColorDefaultBrush"];
     }
 
-    private async void DropZone_Drop(object sender, DragEventArgs e)
+    private void Root_DragLeave(object sender, DragEventArgs e)
     {
+        ResetDropZoneAppearance();
+        e.Handled = true;
+    }
+
+    private async void Root_Drop(object sender, DragEventArgs e)
+    {
+        ResetDropZoneAppearance();
+
         if (!e.DataView.Contains(StandardDataFormats.StorageItems))
         {
             return;
@@ -99,6 +108,9 @@ public sealed partial class MainWindow : Window
             await ViewModel.LoadVideoCommand.ExecuteAsync(file.Path);
         }
     }
+
+    private void ResetDropZoneAppearance() =>
+        DropZone.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
 
     private static void InitializePickerWithWindow(object picker) =>
         InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.MainWindow));

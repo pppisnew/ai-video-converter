@@ -5,7 +5,7 @@
     Title="视频格式转换器"
 >
 
-    <Grid>
+    <Grid AllowDrop="True" DragOver="Root_DragOver" Drop="Root_Drop" DragLeave="Root_DragLeave">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -52,11 +52,11 @@
                     </StackPanel>
                 </Button>
 
-                <Border Height="150" AllowDrop="True"
+                <Border x:Name="DropZone" Height="150"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1" CornerRadius="4"
-                        DragOver="DropZone_DragOver" Drop="DropZone_Drop">
+>
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6">
                         <FontIcon Glyph="&#xE896;" FontSize="26" HorizontalAlignment="Center" Opacity="0.6" />
                         <TextBlock Text="或将视频拖拽到此处" HorizontalAlignment="Center" FontSize="12" Opacity="0.6" />

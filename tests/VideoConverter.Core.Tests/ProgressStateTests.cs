@@ -17,13 +17,37 @@ public class ProgressStateTests
     }
 
     [Fact]
-    public void Apply_OutTimeMs_UpdatesProcessedTime()
+    public void Apply_OutTimeMs_IsIgnored()
     {
+        // ffmpeg 的 out_time_ms 字段名有误导性：实测它与 out_time_us 输出相同的微秒值
+        // （17.2s 时两者都是 17200000）。按毫秒解析会把进度放大 1000 倍，故只认 out_time_us。
         var state = new ProgressState();
 
-        state.Apply("out_time_ms=2500");
+        var changed = state.Apply("out_time_ms=17200000");
 
-        Assert.Equal(TimeSpan.FromMilliseconds(2500), state.Processed);
+        Assert.False(changed);
+        Assert.Equal(TimeSpan.Zero, state.Processed);
+    }
+
+    [Fact]
+    public void Apply_RealFfmpegOutput_ProducesSaneprogress()
+    {
+        // 复现用户反馈的 bug：17 秒视频显示成 01:49:54
+        var state = new ProgressState();
+        foreach (var line in new[]
+        {
+            "frame=123", "fps=45.2", "out_time_us=4551104", "out_time_ms=4551104",
+            "out_time=00:00:04.55", "speed=8.74x", "progress=continue",
+            "frame=456", "out_time_us=17200000", "out_time_ms=17200000",
+            "out_time=00:00:17.20", "speed=3.07x", "progress=end",
+        })
+        {
+            state.Apply(line);
+        }
+
+        Assert.Equal(TimeSpan.FromSeconds(17.2), state.Processed);
+        Assert.True(state.Finished);
+        Assert.Equal(3.07, state.Speed);
     }
 
     [Fact]
@@ -87,11 +111,11 @@ public class ProgressStateTests
     {
         var state = new ProgressState();
 
-        state.Apply("out_time_ms=1000");
+        state.Apply("out_time_us=1000000");
         var changed = state.Apply("out_time_us=500000");
 
         Assert.False(changed, "回退的时间不应产生状态变化");
-        Assert.Equal(TimeSpan.FromMilliseconds(1000), state.Processed);
+        Assert.Equal(TimeSpan.FromSeconds(1), state.Processed);
     }
 
     [Fact]

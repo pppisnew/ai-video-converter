@@ -39,13 +39,8 @@ internal sealed class ProgressState
 
                 break;
 
-            case "out_time_ms":
-                if (TryParseMilliseconds(value, out var milliseconds))
-                {
-                    return AdvanceProcessed(TimeSpan.FromMilliseconds(milliseconds));
-                }
-
-                break;
+            // 注意：不要解析 out_time_ms。ffmpeg 该字段名虽为 ms，实际输出与 out_time_us
+            // 相同的微秒值（实测 17.2s 时两者都输出 17200000）。按毫秒解析会把进度放大 1000 倍。
 
             case "speed":
                 Speed = ParseSpeed(value);
@@ -79,8 +74,7 @@ internal sealed class ProgressState
     internal static bool TryParseMicroseconds(string value, out long microseconds) =>
         long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out microseconds);
 
-    internal static bool TryParseMilliseconds(string value, out long milliseconds) =>
-        long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out milliseconds);
+
 
     /// <summary>speed 形如 "1.5x" 或 "N/A"。</summary>
     internal static double? ParseSpeed(string value)

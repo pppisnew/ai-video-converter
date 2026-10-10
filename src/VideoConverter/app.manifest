@@ -6,4 +6,10 @@
       <supportedOS Id="{8E0F7A12-BFB3-4FE8-B9A5-48FD50A15A9A}"/>
     </application>
   </compatibility>
+  <!-- WinUI 3 拖放等输入场景要求 PerMonitorV2 DPI 感知，缺失时拖拽不会触发 Drop 事件 -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+    </windowsSettings>
+  </application>
 </assembly>

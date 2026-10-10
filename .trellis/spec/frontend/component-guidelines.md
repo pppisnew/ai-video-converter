@@ -22,3 +22,11 @@
 - 单页三列（文件区 / 信息区 / 转换区），列间用 1px `DividerStrokeColorDefaultBrush` 分隔
 - 不做卡片套卡片；分区用细边框，不用阴影和圆角浮层
 - 桌面工具优先信息密度：标签 12-13px、`Opacity="0.6"` 做次级信息层级
+
+## 拖放（Drag & Drop）
+
+- `app.manifest` 必须声明 `<dpiAwareness>PerMonitorV2</dpiAwareness>`（asm.v3 块）。
+  缺失时 WinUI 3 拖放会静默失效：`DragOver`/`Drop` 事件根本不触发（用户反馈"拖拽无效"的根因）。
+  WinUI 3 默认模板自带该声明，手写最小 manifest 不会带。
+- `AllowDrop` 放在根 Grid（整个窗口）而不是可见的拖放区上，拖歪了也能命中；
+  拖放区 Border 仅作视觉提示，在 `DragOver`/`DragLeave` 里换边框色做高亮反馈。

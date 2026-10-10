@@ -7,7 +7,11 @@
 - 统一走 `Internal/ProcessRunner.RunAsync`，不要在服务里直接 `new Process()`
 - 参数必须用 `ProcessStartInfo.ArgumentList` 逐项添加，禁止字符串拼接命令行
   （中文/空格路径会静默失败）
-- 进度只认 `-progress pipe:1` 的 key=value 输出，**不要**用正则解析 stderr 的 `time=`
+- Progress only from `-progress pipe:1` key=value output; never regex-parse stderr `time=`
+- **Only parse `out_time_us`.** The `out_time_ms` field name is misleading: ffmpeg emits the same
+  microsecond value as `out_time_us` (at 17.2s both print 17200000). Parsing it as milliseconds
+  inflates progress by 1000x (symptom: a 17s clip reported as 01:49:54 at 100%).
+  `ProgressState` carries a regression test for this.
 - 取消：`CancellationToken` → Kill 进程树（`Kill(entireProcessTree: true)`）→ 删除不完整输出
 - 错误摘要取 stderr 末尾 5 行（ffmpeg 把真正原因放在最后）
 

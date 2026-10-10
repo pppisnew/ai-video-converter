@@ -119,6 +119,14 @@ public class FfmpegIntegrationTests : IAsyncLifetime
         Assert.True(reports.Last().Percent >= 99d, "最后一次进度应达到 100%");
         Assert.True(reports.Zip(reports.Skip(1)).All(pair => pair.Second.Processed >= pair.First.Processed),
             "已处理时长应单调不减");
+
+        // 回归防护：曾因把 ffmpeg 的 out_time_ms（实为微秒）按毫秒解析，
+        // 导致 17 秒视频显示成 01:49:54。已处理时长不允许远超总时长。
+        var final = reports.Last();
+        Assert.True(final.Processed <= TimeSpan.FromTicks(final.Total.Ticks * 2),
+            $"已处理时长 {final.Processed} 不应远超总时长 {final.Total}");
+        Assert.All(reports, r => Assert.True(r.Processed <= TimeSpan.FromTicks(r.Total.Ticks * 2),
+            $"进度 {r.Processed}/{r.Total} 超出合理范围"));
     }
 
     [Fact]
