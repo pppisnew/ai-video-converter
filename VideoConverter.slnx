@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/VideoConverter.Core/VideoConverter.Core.csproj" />
+    <Project Path="src/VideoConverter/VideoConverter.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/VideoConverter.Core.Tests/VideoConverter.Core.Tests.csproj" />
+  </Folder>
+</Solution>

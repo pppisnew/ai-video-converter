@@ -37,3 +37,14 @@ build/
 Thumbs.db
 desktop.ini
 .DS_Store
+# --- .NET build output ---
+bin/
+obj/
+*.user
+*.suo
+
+# --- Bundled ffmpeg binaries (fetched via tools/fetch-ffmpeg.ps1, ~280MB) ---
+tools/ffmpeg/
+
+# --- Test artifacts ---
+tests/**/TempMedia/
