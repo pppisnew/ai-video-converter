@@ -12,6 +12,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
+    <!-- MVVMTK0045: 字段式 ObservableProperty 在 NativeAOT 下才需要 partial 属性；本项目不做 NativeAOT 发布 -->
+    <NoWarn>MVVMTK0045</NoWarn>
     <ApplicationIcon />
   </PropertyGroup>
 
@@ -23,5 +25,22 @@
   <ItemGroup>
     <ProjectReference Include="..\VideoConverter.Core\VideoConverter.Core.csproj" />
   </ItemGroup>
+
+  <!-- ffmpeg 随应用捆绑：发布/构建输出中包含 tools/ffmpeg/(ffmpeg|ffprobe).exe，
+       与 Core 层 FfmpegLocator 的"捆绑优先"查找路径对应。二进制由 tools/fetch-ffmpeg.ps1 获取。 -->
+  <ItemGroup>
+    <Content Include="..\..\tools\ffmpeg\ffmpeg.exe" Link="tools\ffmpeg\ffmpeg.exe" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\tools\ffmpeg\ffprobe.exe" Link="tools\ffmpeg\ffprobe.exe" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- unpackaged WinUI 3 的已知缺口：dotnet publish 不会把 XAML 编译产物
+       (.xbf / .pri) 带入发布目录，缺少它们运行时加载 XAML 会直接崩溃。
+       这里在发布后从构建输出补齐。 -->
+  <Target Name="CopyXamlBinariesToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <XamlBinaryOutputs Include="$(OutputPath)*.xbf;$(OutputPath)*.pri" />
+    </ItemGroup>
+    <Copy SourceFiles="@(XamlBinaryOutputs)" DestinationFolder="$(PublishDir)" />
+  </Target>
 
 </Project>
