@@ -1,0 +1,39 @@
+# --- Trellis: local developer identity and per-session runtime state ---
+# (.trellis/.gitignore covers these too; kept here so the intent is explicit)
+.trellis/.developer
+.trellis/.current-task
+.trellis/.runtime/
+.trellis/.ralph-state.json
+.trellis/.agent-log
+.trellis/.session-id
+.trellis/.plan-log
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- Node ---
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Build output ---
+dist/
+build/
+*.egg-info/
+
+# --- Environment / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- OS / editor ---
+Thumbs.db
+desktop.ini
+.DS_Store
