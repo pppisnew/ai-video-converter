@@ -76,4 +76,6 @@ t2.ps1
 uiauto.cs
 ui-*.png
 wheel.cs
-e2e-sample.mp4
+e2e-sample.mp4*.json
+tcjob.cs
+wheel.cs
