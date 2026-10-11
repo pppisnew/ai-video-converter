@@ -62,7 +62,7 @@ public class FfmpegIntegrationTests : IAsyncLifetime
 
         Assert.True(File.Exists(output));
         Assert.True(new FileInfo(output).Length > 0);
-        Assert.Equal(new byte[] { 0xFF, 0xD8 }, await File.ReadAllBytesAsync(output).ContinueWith(t => t.Result[..2]));
+        Assert.Equal(new byte[] { 0xFF, 0xD8 }, (await File.ReadAllBytesAsync(output))[..2]);
     }
 
     [Fact]
@@ -77,19 +77,26 @@ public class FfmpegIntegrationTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(TargetFormat.Mp4, "mp4", "h264", "aac")]
-    [InlineData(TargetFormat.Mov, "mov,mp4,m4a,3gp,3g2,mj2", "h264", "aac")]
-    [InlineData(TargetFormat.Mkv, "matroska,webm", "h264", "aac")]
-    [InlineData(TargetFormat.Avi, "avi", "mpeg4", "mp3")]
-    [InlineData(TargetFormat.WebM, "matroska,webm", "vp9", "opus")]
-    [InlineData(TargetFormat.Mp3, "mp3", null, "mp3")]
-    public async Task Convert_ProducesPlayableOutput(TargetFormat format, string expectedContainer, string? expectedVideoCodec, string expectedAudioCodec)
+    [InlineData(".mp4", "mp4", "h264", "aac")]
+    [InlineData(".mov", "mov,mp4,m4a,3gp,3g2,mj2", "h264", "aac")]
+    [InlineData(".mkv", "matroska,webm", "h264", "aac")]
+    [InlineData(".avi", "avi", "h264", "aac")]
+    [InlineData(".webm", "matroska,webm", "vp9", "opus")]
+    [InlineData(".mp3", "mp3", null, "mp3")]
+    public async Task Convert_ProducesPlayableOutput(string container, string expectedContainer, string? expectedVideoCodec, string expectedAudioCodec)
     {
         var probe = new FfprobeMediaProbeService(_binaries);
         var service = new FfmpegConversionService(_binaries, probe);
-        var output = Path.Combine(_tempDir, "out." + ConvertPreset.FromFormat(format).Extension.TrimStart('.'));
+        // WebM 只支持 VP8/VP9/AV1 视频，H.264 放进去会被 muxer 拒绝
+        var settings = container == ".mp3"
+            ? ConversionSettingsPresets.Mp3()
+            : ConversionSettingsPresets.New(container) with
+            {
+                Encoder = container == ".webm" ? VideoEncoderChoice.Vp9 : VideoEncoderChoice.H264,
+            };
+        var output = Path.Combine(_tempDir, "out" + container);
 
-        var result = await service.ConvertAsync(_sampleVideo, output, format);
+        var result = await service.ConvertAsync(_sampleVideo, output, settings);
 
         Assert.True(result.Success, result.Error);
         Assert.True(File.Exists(output));
@@ -102,6 +109,60 @@ public class FfmpegIntegrationTests : IAsyncLifetime
         Assert.Equal(expectedAudioCodec, info.AudioCodec);
     }
 
+    [Theory]
+    [InlineData(VideoEncoderChoice.H264, "h264", "libx264")]
+    [InlineData(VideoEncoderChoice.H265, "hevc", "libx265")]
+    [InlineData(VideoEncoderChoice.Vp9, "vp9", "libvpx-vp9")]
+    public async Task Convert_RespectsEncoderChoice(VideoEncoderChoice choice, string expectedCodec, string expectedFfmpegEncoder)
+    {
+        var probe = new FfprobeMediaProbeService(_binaries);
+        var service = new FfmpegConversionService(_binaries, probe);
+        var settings = ConversionSettingsPresets.New(".mkv") with { Encoder = choice };
+        var output = Path.Combine(_tempDir, $"enc-{choice}.mkv");
+
+        var result = await service.ConvertAsync(_sampleVideo, output, settings);
+
+        Assert.True(result.Success, result.Error);
+        Assert.Equal(expectedFfmpegEncoder, result.UsedEncoder);
+        var info = await probe.ProbeAsync(output);
+        Assert.Equal(expectedCodec, info.VideoCodec);
+    }
+
+    [Theory]
+    [InlineData(ResolutionScale.P1080, 1080, 1440)]
+    [InlineData(ResolutionScale.P720, 720, 960)]
+    [InlineData(ResolutionScale.P480, 480, 640)]
+    public async Task Convert_AppliesResolutionScale(ResolutionScale scale, int expectedHeight, int expectedWidth)
+    {
+        var probe = new FfprobeMediaProbeService(_binaries);
+        var service = new FfmpegConversionService(_binaries, probe);
+        var settings = ConversionSettingsPresets.New(".mp4") with { Encoder = VideoEncoderChoice.H264, Scale = scale };
+        var output = Path.Combine(_tempDir, $"scaled-{scale}.mp4");
+
+        var result = await service.ConvertAsync(_sampleVideo, output, settings);
+
+        Assert.True(result.Success, result.Error);
+        var info = await probe.ProbeAsync(output);
+        Assert.Equal(expectedHeight, info.Height);
+        Assert.Equal(expectedWidth, info.Width);
+    }
+
+    [Fact]
+    public async Task Convert_OriginalScale_KeepsSourceResolution()
+    {
+        var probe = new FfprobeMediaProbeService(_binaries);
+        var service = new FfmpegConversionService(_binaries, probe);
+        var settings = ConversionSettingsPresets.New(".mp4") with { Encoder = VideoEncoderChoice.H264, Scale = ResolutionScale.Original };
+        var output = Path.Combine(_tempDir, "original-scale.mp4");
+
+        var result = await service.ConvertAsync(_sampleVideo, output, settings);
+
+        Assert.True(result.Success, result.Error);
+        var info = await probe.ProbeAsync(output);
+        Assert.Equal(320, info.Width);
+        Assert.Equal(240, info.Height);
+    }
+
     [Fact]
     public async Task Convert_ReportsMonotonicProgressAndCompletes()
     {
@@ -111,7 +172,7 @@ public class FfmpegIntegrationTests : IAsyncLifetime
         var reports = new List<ConversionProgress>();
 
         var progress = new Progress<ConversionProgress>(reports.Add);
-        var result = await service.ConvertAsync(_sampleVideo, output, TargetFormat.Mp4, progress);
+        var result = await service.ConvertAsync(_sampleVideo, output, ConversionSettingsPresets.Mp4(), progress);
 
         Assert.True(result.Success, result.Error);
         Assert.NotEmpty(reports);
@@ -132,7 +193,6 @@ public class FfmpegIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Convert_Cancellation_ThrowsAndDeletesPartialOutput()
     {
-        // 用更长的视频确保取消时转换仍在进行；在收到第一帧进度时同步取消
         var longVideo = await TestMediaFactory.CreateSampleVideoAsync(
             Path.Combine(_tempDir, "long.mp4"), durationSeconds: 30, width: 640, height: 480);
         var probe = new FfprobeMediaProbeService(_binaries);
@@ -142,15 +202,9 @@ public class FfmpegIntegrationTests : IAsyncLifetime
         var progress = new SynchronousProgress(_ => cts.Cancel());
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => service.ConvertAsync(longVideo, output, TargetFormat.Mp4, progress, cts.Token));
+            () => service.ConvertAsync(longVideo, output, ConversionSettingsPresets.Mp4(), progress, cts.Token));
 
         Assert.False(File.Exists(output), "取消后应删除不完整的输出文件");
-    }
-
-    /// <summary>同步回调的 IProgress，确保取消发生在转换线程上而不是被抛到线程池。</summary>
-    private sealed class SynchronousProgress(Action<ConversionProgress> handler) : IProgress<ConversionProgress>
-    {
-        public void Report(ConversionProgress value) => handler(value);
     }
 
     [Fact]
@@ -164,7 +218,7 @@ public class FfmpegIntegrationTests : IAsyncLifetime
         File.Copy(_sampleVideo, input);
         var output = Path.Combine(directory, "输出 文件.mkv");
 
-        var result = await service.ConvertAsync(input, output, TargetFormat.Mkv);
+        var result = await service.ConvertAsync(input, output, ConversionSettingsPresets.Mkv());
 
         Assert.True(result.Success, result.Error);
         Assert.True(File.Exists(output));
@@ -177,7 +231,10 @@ public class FfmpegIntegrationTests : IAsyncLifetime
         var service = new FfmpegConversionService(_binaries, probe);
 
         await Assert.ThrowsAsync<FileNotFoundException>(
-            () => service.ConvertAsync(Path.Combine(_tempDir, "missing.mp4"), Path.Combine(_tempDir, "out.mp4"), TargetFormat.Mp4));
+            () => service.ConvertAsync(
+                Path.Combine(_tempDir, "missing.mp4"),
+                Path.Combine(_tempDir, "out.mp4"),
+                ConversionSettingsPresets.Mp4()));
     }
 
     [Fact]
@@ -191,6 +248,12 @@ public class FfmpegIntegrationTests : IAsyncLifetime
         Assert.True(File.Exists(found!.FfmpegPath));
         Assert.True(File.Exists(found.FfprobePath));
         Assert.Contains("ffmpeg version", locator.GetVersion(found));
+    }
+
+    /// <summary>同步回调的 IProgress，确保取消发生在转换线程上而不是被抛到线程池。</summary>
+    private sealed class SynchronousProgress(Action<ConversionProgress> handler) : IProgress<ConversionProgress>
+    {
+        public void Report(ConversionProgress value) => handler(value);
     }
 
     private static void TryDeleteDirectory(string dir)

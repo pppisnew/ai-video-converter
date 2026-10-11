@@ -1,0 +1,281 @@
+using VideoConverter.Core.Models;
+using VideoConverter.Core.Services;
+using Xunit;
+
+namespace VideoConverter.Core.Tests;
+
+/// <summary>用一个可编排的假转换服务测试队列行为，不依赖真实 ffmpeg。</summary>
+public sealed class FakeConversionService : IConversionService
+{
+    private readonly Func<string, ConversionResult> _behavior;
+
+    public FakeConversionService(Func<string, ConversionResult> behavior, Action<string>? onStart = null)
+    {
+        _behavior = behavior;
+        OnStart = onStart;
+    }
+
+    /// <summary>转换开始时的回调，供测试在任务进行中触发取消。</summary>
+    public Action<string>? OnStart { get; }
+
+    public List<string> ConvertedInputs { get; } = new();
+
+    public Task<ConversionResult> ConvertAsync(
+        string inputPath,
+        string outputPath,
+        ConversionSettings settings,
+        IProgress<ConversionProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ConvertedInputs.Add(inputPath);
+        cancellationToken.ThrowIfCancellationRequested();
+        OnStart?.Invoke(inputPath);
+
+        // 可取消的延迟：取消时抛出 OperationCanceledException，与真实 ffmpeg 行为一致
+        return Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(300), cancellationToken).ConfigureAwait(false);
+            return _behavior(inputPath);
+        }, cancellationToken);
+    }
+}
+
+public class ConversionQueueTests
+{
+    private static ConversionSettings Settings() => ConversionSettingsPresets.New(".mp4");
+
+    private static string TempInput(string name)
+    {
+        var path = Path.Combine(Path.GetTempPath(), "vc-queue-" + Guid.NewGuid().ToString("N"), name);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "x");
+        return path;
+    }
+
+    [Fact]
+    public async Task RunAsync_ProcessesItemsInOrder()
+    {
+        var service = new FakeConversionService(_ => ConversionResult.Ok("out.mp4", "libx264"));
+        var queue = new ConversionQueue(service);
+        var a = TempInput("a.mp4");
+        var b = TempInput("b.mp4");
+        var c = TempInput("c.mp4");
+        queue.Enqueue(a, Settings());
+        queue.Enqueue(b, Settings());
+        queue.Enqueue(c, Settings());
+
+        await queue.RunAsync();
+
+        Assert.Equal(new[] { a, b, c }, service.ConvertedInputs);
+        Assert.All(queue.Items, i => Assert.Equal(QueueItemState.Completed, i.State));
+    }
+
+    [Fact]
+    public async Task RunAsync_OnlyOneItemConvertingAtATime()
+    {
+        var concurrent = 0;
+        var maxConcurrent = 0;
+        var service = new FakeConversionService(_ =>
+        {
+            concurrent++;
+            maxConcurrent = Math.Max(maxConcurrent, concurrent);
+            Thread.Sleep(30);
+            concurrent--;
+            return ConversionResult.Ok("out.mp4");
+        });
+        var queue = new ConversionQueue(service);
+        for (var i = 0; i < 4; i++)
+        {
+            queue.Enqueue(TempInput($"f{i}.mp4"), Settings());
+        }
+
+        await queue.RunAsync();
+
+        Assert.Equal(1, maxConcurrent);
+    }
+
+    [Fact]
+    public async Task RunAsync_FailureDoesNotStopLaterItems()
+    {
+        var service = new FakeConversionService(input =>
+            Path.GetFileName(input).StartsWith("bad")
+                ? ConversionResult.Failed("out.mp4", 1, "boom")
+                : ConversionResult.Ok("out.mp4", "libx264"));
+        var queue = new ConversionQueue(service);
+        var good1 = TempInput("good1.mp4");
+        var bad = TempInput("bad.mp4");
+        var good2 = TempInput("good2.mp4");
+        queue.Enqueue(good1, Settings());
+        queue.Enqueue(bad, Settings());
+        queue.Enqueue(good2, Settings());
+
+        QueueSummary? summary = null;
+        queue.QueueFinished += s => summary = s;
+        await queue.RunAsync();
+
+        Assert.Equal(QueueItemState.Completed, queue.Items[0].State);
+        Assert.Equal(QueueItemState.Failed, queue.Items[1].State);
+        Assert.Equal(QueueItemState.Completed, queue.Items[2].State);
+        Assert.Equal("boom", queue.Items[1].Error);
+        Assert.NotNull(summary);
+        Assert.Equal(2, summary!.Completed);
+        Assert.Equal(1, summary.Failed);
+    }
+
+    [Fact]
+    public async Task RunAsync_ExceptionIsCapturedAsFailure()
+    {
+        var service = new FakeConversionService(_ => throw new InvalidOperationException("kaboom"));
+        var queue = new ConversionQueue(service);
+        queue.Enqueue(TempInput("a.mp4"), Settings());
+
+        await queue.RunAsync();
+
+        Assert.Equal(QueueItemState.Failed, queue.Items[0].State);
+        Assert.Contains("kaboom", queue.Items[0].Error);
+    }
+
+    [Fact]
+    public async Task RunAsync_CancelCurrent_LeavesLaterItemsPending()
+    {
+        var firstSeen = new TaskCompletionSource();
+        var service = new FakeConversionService(
+            _ => ConversionResult.Ok("out.mp4"),
+            _ => firstSeen.TrySetResult());
+        var queue = new ConversionQueue(service);
+        queue.Enqueue(TempInput("a.mp4"), Settings());
+        queue.Enqueue(TempInput("b.mp4"), Settings());
+        queue.Enqueue(TempInput("c.mp4"), Settings());
+
+        var run = queue.RunAsync();
+        await firstSeen.Task;
+        queue.CancelCurrent();
+        await run;
+
+        // "取消当前" = 跳过这个文件，队列继续跑完后续项
+        Assert.Equal(QueueItemState.Failed, queue.Items[0].State);
+        Assert.Contains("已取消", queue.Items[0].Error);
+        Assert.Equal(QueueItemState.Completed, queue.Items[1].State);
+        Assert.Equal(QueueItemState.Completed, queue.Items[2].State);
+    }
+
+    [Fact]
+    public async Task RunAsync_CancelAll_StopsQueueEntirely()
+    {
+        var firstSeen = new TaskCompletionSource();
+        var service = new FakeConversionService(
+            _ => ConversionResult.Ok("out.mp4"),
+            _ => firstSeen.TrySetResult());
+        var queue = new ConversionQueue(service);
+        queue.Enqueue(TempInput("a.mp4"), Settings());
+        queue.Enqueue(TempInput("b.mp4"), Settings());
+        queue.Enqueue(TempInput("c.mp4"), Settings());
+
+        var run = queue.RunAsync();
+        await firstSeen.Task;
+        queue.CancelAll();
+        await run;
+
+        Assert.Equal(QueueItemState.Failed, queue.Items[0].State);
+        Assert.Equal(QueueItemState.Pending, queue.Items[1].State);
+        Assert.Equal(QueueItemState.Pending, queue.Items[2].State);
+        Assert.Single(service.ConvertedInputs);
+    }
+
+    [Fact]
+    public async Task RetryFailed_ResetsFailedItemsOnly()
+    {
+        var attempts = 0;
+        var service = new FakeConversionService(_ =>
+        {
+            attempts++;
+            return attempts == 1
+                ? ConversionResult.Failed("out.mp4", 1, "first fails")
+                : ConversionResult.Ok("out.mp4", "libx264");
+        });
+        var queue = new ConversionQueue(service);
+        queue.Enqueue(TempInput("a.mp4"), Settings());
+        await queue.RunAsync();
+
+        Assert.Equal(QueueItemState.Failed, queue.Items[0].State);
+        var retried = queue.RetryFailed();
+        await queue.RunAsync();
+
+        Assert.Equal(1, retried);
+        Assert.Equal(QueueItemState.Completed, queue.Items[0].State);
+        Assert.Null(queue.Items[0].Error);
+    }
+
+    [Fact]
+    public void Enqueue_QueueLevelCollision_DoesNotReuseAnotherItemsOutput()
+    {
+        // 场景：两个不同目录的同名文件，输出被指定到同一目录时不能撞车。
+        // 用 settings.Container 指向同一目录来模拟（把输入放到同一目录即可复现）。
+        var service = new FakeConversionService(_ => ConversionResult.Ok("out"));
+        var queue = new ConversionQueue(service);
+        var dir = Path.Combine(Path.GetTempPath(), "vc-dup-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+
+        var inputA = Path.Combine(dir, "clip.mp4");
+        File.WriteAllText(inputA, "x");
+        var itemA = queue.Enqueue(inputA, Settings());
+        Assert.EndsWith("clip_converted.mp4", itemA.OutputPath);
+
+        // 同名文件再次入队：即使磁盘上还没生成第一个输出，也不能复用同一路径
+        var inputB = Path.Combine(dir, "clip.mp4");
+        var itemB = queue.Enqueue(inputB, Settings());
+        Assert.NotEqual(itemA.OutputPath, itemB.OutputPath);
+        Assert.EndsWith("clip_converted_1.mp4", itemB.OutputPath);
+    }
+
+    [Fact]
+    public void Enqueue_OutputCollision_AppendsNumericSuffix()
+    {
+        var service = new FakeConversionService(_ => ConversionResult.Ok("out"));
+        var queue = new ConversionQueue(service);
+        var dir = Path.Combine(Path.GetTempPath(), "vc-suffix-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var input = Path.Combine(dir, "clip.mp4");
+        File.WriteAllText(input, "x");
+
+        var first = queue.Enqueue(input, Settings());
+        Assert.EndsWith("clip_converted.mp4", first.OutputPath);
+
+        // 制造磁盘上已存在的同名输出
+        File.WriteAllText(first.OutputPath, "existing");
+        var second = queue.Enqueue(input, Settings());
+        Assert.EndsWith("clip_converted_1.mp4", second.OutputPath);
+
+        File.WriteAllText(second.OutputPath, "existing");
+        var third = queue.Enqueue(input, Settings());
+        Assert.EndsWith("clip_converted_2.mp4", third.OutputPath);
+    }
+
+    [Fact]
+    public void Remove_ConvertingItem_IsRejected()
+    {
+        var service = new FakeConversionService(_ => ConversionResult.Ok("out"));
+        var queue = new ConversionQueue(service);
+        var item = queue.Enqueue(TempInput("a.mp4"), Settings());
+        item.MarkConverting(new CancellationTokenSource());
+
+        Assert.False(queue.Remove(item.Id));
+        Assert.Single(queue.Items);
+    }
+
+    [Fact]
+    public void ClearCompleted_RemovesOnlyCompleted()
+    {
+        var service = new FakeConversionService(_ => ConversionResult.Ok("out"));
+        var queue = new ConversionQueue(service);
+        var done = queue.Enqueue(TempInput("done.mp4"), Settings());
+        var pending = queue.Enqueue(TempInput("pending.mp4"), Settings());
+        done.MarkCompleted("libx264");
+
+        var removed = queue.ClearCompleted();
+
+        Assert.Equal(1, removed);
+        Assert.Single(queue.Items);
+        Assert.Equal(pending.Id, queue.Items[0].Id);
+    }
+}
