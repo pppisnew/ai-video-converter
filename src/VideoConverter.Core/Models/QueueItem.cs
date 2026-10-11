@@ -29,6 +29,24 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
     public MediaInfo? Info { get; init; }
 
     public QueueItemState State { get; private set; } = QueueItemState.Pending;
+
+    private bool _isSelected = true;
+
+    /// <summary>是否参与本次转换（队列项复选框）。</summary>
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value)
+            {
+                return;
+            }
+
+            _isSelected = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsSelected)));
+        }
+    }
     public ConversionProgress? Progress { get; private set; }
     public string? Error { get; private set; }
     public string? UsedEncoder { get; private set; }

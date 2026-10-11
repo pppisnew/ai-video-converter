@@ -21,6 +21,16 @@ public interface IConversionQueue
 
     int ClearCompleted();
 
+    /// <summary>Select or deselect every item (header checkbox).</summary>
+    void SetAllSelected(bool selected);
+
+    bool MoveUp(string itemId);
+
+    bool MoveDown(string itemId);
+
+    /// <summary>Remove every item; returns how many were dropped.</summary>
+    int Clear();
+
     int RetryFailed();
 
     Task RunAsync(CancellationToken cancellationToken = default);
@@ -79,6 +89,54 @@ public sealed class ConversionQueue : IConversionQueue
         return true;
     }
 
+    /// <summary>Select or deselect every item (drives the header checkbox).</summary>
+    public void SetAllSelected(bool selected)
+    {
+        foreach (var item in _items)
+        {
+            item.IsSelected = selected;
+            ItemChanged?.Invoke(item);
+        }
+    }
+
+    public bool MoveUp(string itemId)
+    {
+        var index = IndexOf(itemId);
+        if (index <= 0)
+        {
+            return false;
+        }
+
+        (_items[index], _items[index - 1]) = (_items[index - 1], _items[index]);
+        ItemChanged?.Invoke(_items[index]);
+        ItemChanged?.Invoke(_items[index - 1]);
+        return true;
+    }
+
+    public bool MoveDown(string itemId)
+    {
+        var index = IndexOf(itemId);
+        if (index < 0 || index >= _items.Count - 1)
+        {
+            return false;
+        }
+
+        (_items[index], _items[index + 1]) = (_items[index + 1], _items[index]);
+        ItemChanged?.Invoke(_items[index]);
+        ItemChanged?.Invoke(_items[index + 1]);
+        return true;
+    }
+
+    /// <summary>Remove every item, returning how many were dropped.</summary>
+    public int Clear()
+    {
+        var count = _items.Count;
+        _items.Clear();
+        return count;
+    }
+
+    private int IndexOf(string itemId) => _items.FindIndex(i => i.Id == itemId);
+
     public int ClearCompleted()
     {
         var removed = _items.Where(i => i.State == QueueItemState.Completed).ToList();
@@ -105,7 +163,11 @@ public sealed class ConversionQueue : IConversionQueue
 
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
-        await _runGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        // NOTE: do NOT use ConfigureAwait(false) here. The continuation must resume on the
+        // caller's synchronization context (the UI thread). Otherwise MarkCompleted/MarkFailed
+        // raise PropertyChanged on a thread-pool thread and WinUI bindings silently drop it,
+        // which shows up as queue items stuck on the Converting state forever.
+        await _runGate.WaitAsync(cancellationToken);
         try
         {
             IsRunning = true;
@@ -123,7 +185,8 @@ public sealed class ConversionQueue : IConversionQueue
                     break;
                 }
 
-                if (item.State != QueueItemState.Pending)
+                // Unchecked items are skipped so the user can convert only a subset
+                if (item.State != QueueItemState.Pending || !item.IsSelected)
                 {
                     continue;
                 }
@@ -141,7 +204,7 @@ public sealed class ConversionQueue : IConversionQueue
                 try
                 {
                     var result = await _conversionService.ConvertAsync(
-                        item.InputPath, item.OutputPath, item.Settings, progress, itemCts.Token).ConfigureAwait(false);
+                        item.InputPath, item.OutputPath, item.Settings, progress, itemCts.Token);
 
                     if (result.Success)
                     {

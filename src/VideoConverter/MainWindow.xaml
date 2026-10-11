@@ -63,19 +63,39 @@
                     </StackPanel>
                 </Border>
 
-                <Grid ColumnSpacing="8">
+                <Grid ColumnSpacing="6" RowSpacing="6">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="转换队列" FontSize="13" FontWeight="SemiBold" Opacity="0.7" VerticalAlignment="Center" />
-                    <Button Grid.Column="1" Content="移除" Padding="8,3" FontSize="12"
+                    <CheckBox Grid.Column="0" IsChecked="{x:Bind ViewModel.AllSelected, Mode=TwoWay}"
+                              Command="{x:Bind ViewModel.ToggleSelectAllCommand, Mode=OneWay}"
+                              MinWidth="0" Padding="4,0,8,0" VerticalAlignment="Center"
+                              AutomationProperties.Name="全选队列项" AutomationProperties.AutomationId="SelectAllCheck" />
+                    <TextBlock Grid.Column="1" Text="转换队列" FontSize="13" FontWeight="SemiBold" Opacity="0.7" VerticalAlignment="Center" />
+                    <Button Grid.Column="2" Content="上移" Padding="6,3" FontSize="12" AutomationProperties.AutomationId="MoveUpButton"
+                            Command="{x:Bind ViewModel.MoveUpCommand, Mode=OneWay}"
+                            IsEnabled="{x:Bind ViewModel.HasSelectedItem, Mode=OneWay}"
+                            ToolTipService.ToolTip="上移选中项" AutomationProperties.Name="上移" />
+                    <Button Grid.Column="3" Content="下移" Padding="6,3" FontSize="12" AutomationProperties.AutomationId="MoveDownButton"
+                            Command="{x:Bind ViewModel.MoveDownCommand, Mode=OneWay}"
+                            IsEnabled="{x:Bind ViewModel.HasSelectedItem, Mode=OneWay}"
+                            ToolTipService.ToolTip="下移选中项" AutomationProperties.Name="下移" />
+                    <Button Grid.Column="4" Content="移除" Padding="6,3" FontSize="12"
                             Command="{x:Bind ViewModel.RemoveSelectedCommand, Mode=OneWay}"
                             IsEnabled="{x:Bind ViewModel.HasSelectedItem, Mode=OneWay}"
                             AutomationProperties.Name="移除选中队列项" />
-                    <Button Grid.Column="1" Content="清除已完成" Padding="8,3" FontSize="12" Margin="0,0,8,0"
+                    <Button Grid.Column="5" Content="清除已完成" Padding="6,3" FontSize="12"
                             Command="{x:Bind ViewModel.ClearCompletedCommand, Mode=OneWay}"
                             AutomationProperties.Name="清除已完成任务" />
+                    <Button Grid.Column="6" Content="清空队列" Padding="6,3" FontSize="12" AutomationProperties.AutomationId="ClearQueueButton"
+                            Command="{x:Bind ViewModel.ClearQueueCommand, Mode=OneWay}"
+                            AutomationProperties.Name="清空队列" />
                 </Grid>
 
                 <ListView MaxHeight="320" SelectionMode="Single"
@@ -84,23 +104,26 @@
                           AutomationProperties.Name="转换队列">
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="models:QueueItem" xmlns:models="using:VideoConverter.Core.Models">
-                            <Grid Padding="0,6" ColumnSpacing="8">
+                            <Grid Padding="0,6" ColumnSpacing="6">
                                 <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <!-- 经典 Binding：x:Bind + Converter 的查找根是 Window（非 FrameworkElement）会编译失败 -->
-                                <FontIcon Grid.Column="0" FontSize="14" VerticalAlignment="Center"
+                                <CheckBox Grid.Column="0" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" MinWidth="0"
+                                          VerticalAlignment="Center" AutomationProperties.Name="参与转换" />
+                                <!-- classic Binding: x:Bind + Converter roots at the Window (not a FrameworkElement) and fails to compile -->
+                                <FontIcon Grid.Column="1" FontSize="14" VerticalAlignment="Center"
                                           Glyph="{Binding State, Converter={StaticResource StateToGlyph}}"
                                           Foreground="{Binding State, Converter={StaticResource StateToBrush}}" />
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center">
                                     <TextBlock Text="{x:Bind FileName, Mode=OneWay}" TextTrimming="CharacterEllipsis"
                                                ToolTipService.ToolTip="{x:Bind InputPath, Mode=OneWay}" />
                                     <TextBlock Text="{x:Bind StateText, Mode=OneWay}" FontSize="11" Opacity="0.6"
                                                TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
-                                <Button Grid.Column="2" Content="定位" Padding="6,2" FontSize="11"
+                                <Button Grid.Column="3" Content="定位" Padding="6,2" FontSize="11"
                                         Visibility="{x:Bind IsCompleted, Mode=OneWay}"
                                         Click="RevealOutputButton_Click"
                                         AutomationProperties.Name="定位输出文件" />

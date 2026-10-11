@@ -279,3 +279,123 @@ public class ConversionQueueTests
         Assert.Equal(pending.Id, queue.Items[0].Id);
     }
 }
+
+public class ConversionQueueSelectionTests
+{
+    private static ConversionSettings Settings() => ConversionSettingsPresets.New(".mp4");
+
+    private static string TempInput(string name)
+    {
+        var path = Path.Combine(Path.GetTempPath(), "vc-sel-" + Guid.NewGuid().ToString("N"), name);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "x");
+        return path;
+    }
+
+    [Fact]
+    public async Task RunAsync_SkipsUncheckedItems()
+    {
+        var service = new FakeConversionService(_ => ConversionResult.Ok("out", "libx264"));
+        var queue = new ConversionQueue(service);
+        var a = queue.Enqueue(TempInput("a.mp4"), Settings());
+        var b = queue.Enqueue(TempInput("b.mp4"), Settings());
+        var c = queue.Enqueue(TempInput("c.mp4"), Settings());
+        b.IsSelected = false;
+
+        await queue.RunAsync();
+
+        Assert.Equal(new[] { a.InputPath, c.InputPath }, service.ConvertedInputs);
+        Assert.Equal(QueueItemState.Completed, a.State);
+        Assert.Equal(QueueItemState.Pending, b.State);
+        Assert.Equal(QueueItemState.Completed, c.State);
+    }
+
+    [Fact]
+    public void SetAllSelected_TogglesEveryItem()
+    {
+        var queue = new ConversionQueue(new FakeConversionService(_ => ConversionResult.Ok("out")));
+        queue.Enqueue(TempInput("a.mp4"), Settings());
+        queue.Enqueue(TempInput("b.mp4"), Settings());
+
+        queue.SetAllSelected(false);
+        Assert.All(queue.Items, i => Assert.False(i.IsSelected));
+
+        queue.SetAllSelected(true);
+        Assert.All(queue.Items, i => Assert.True(i.IsSelected));
+    }
+
+    [Fact]
+    public void MoveUpMoveDown_ReordersItems()
+    {
+        var queue = new ConversionQueue(new FakeConversionService(_ => ConversionResult.Ok("out")));
+        var a = queue.Enqueue(TempInput("a.mp4"), Settings());
+        var b = queue.Enqueue(TempInput("b.mp4"), Settings());
+        var c = queue.Enqueue(TempInput("c.mp4"), Settings());
+
+        Assert.True(queue.MoveUp(c.Id));
+        Assert.Equal(new[] { a.Id, c.Id, b.Id }, queue.Items.Select(i => i.Id).ToArray());
+
+        Assert.True(queue.MoveDown(a.Id));
+        Assert.Equal(new[] { c.Id, a.Id, b.Id }, queue.Items.Select(i => i.Id).ToArray());
+
+        Assert.False(queue.MoveUp(c.Id), "already at top");
+        Assert.False(queue.MoveDown(b.Id), "already at bottom");
+        Assert.False(queue.MoveUp("nope"), "unknown id");
+    }
+
+    [Fact]
+    public void Clear_RemovesEverything()
+    {
+        var queue = new ConversionQueue(new FakeConversionService(_ => ConversionResult.Ok("out")));
+        queue.Enqueue(TempInput("a.mp4"), Settings());
+        queue.Enqueue(TempInput("b.mp4"), Settings());
+
+        Assert.Equal(2, queue.Clear());
+        Assert.Empty(queue.Items);
+    }
+
+    [Fact]
+    public async Task RunAsync_NotifiesOnCallerSynchronizationContext()
+    {
+        // Regression guard for the state-machine desync: MarkCompleted used to run on a
+        // thread-pool thread (ConfigureAwait(false)), so WinUI bindings never saw the
+        // Completed state and queue items stayed stuck on "Converting".
+        var contexts = new List<string>();
+        var queue = new ConversionQueue(new FakeConversionService(_ => ConversionResult.Ok("out", "libx264")));
+        queue.ItemChanged += _ => contexts.Add(SynchronizationContext.Current?.GetType().Name ?? "null");
+        queue.QueueFinished += _ => contexts.Add("finished:" + (SynchronizationContext.Current?.GetType().Name ?? "null"));
+
+        var singleThread = new SingleThreadSynchronizationContext();
+        System.Threading.SynchronizationContext.SetSynchronizationContext(singleThread);
+        try
+        {
+            var run = queue.RunAsync();
+            singleThread.RunOnCurrentThread();
+            await run;
+        }
+        finally
+        {
+            System.Threading.SynchronizationContext.SetSynchronizationContext(null);
+        }
+
+        Assert.NotEmpty(contexts);
+        Assert.All(contexts, c => Assert.Contains("SingleThread", c));
+    }
+
+    private sealed class SingleThreadSynchronizationContext : SynchronizationContext
+    {
+        private readonly System.Collections.Concurrent.BlockingCollection<(SendOrPostCallback, object?)> _queue = new();
+
+        public override void Post(SendOrPostCallback d, object? state) => _queue.Add((d, state));
+
+        public override void Send(SendOrPostCallback d, object? state) => d(state);
+
+        public void RunOnCurrentThread()
+        {
+            while (_queue.TryTake(out var item, 50))
+            {
+                item.Item1(item.Item2);
+            }
+        }
+    }
+}

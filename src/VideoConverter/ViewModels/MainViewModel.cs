@@ -98,6 +98,24 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>是否允许重新探测（探测中禁用）。</summary>
     public bool CanReprobe => !IsProbing;
+
+    private bool _allSelected = true;
+
+    /// <summary>Queue header select-all checkbox.</summary>
+    public bool AllSelected
+    {
+        get => _allSelected;
+        set
+        {
+            if (SetProperty(ref _allSelected, value))
+            {
+                OnPropertyChanged(nameof(SelectedCount));
+            }
+        }
+    }
+
+    /// <summary>Checked and still-pending items.</summary>
+    public int SelectedCount => Queue.Count(i => i.IsSelected && i.State == QueueItemState.Pending);
     [ObservableProperty]
     private int _crf = 23;
 
@@ -398,6 +416,8 @@ public sealed partial class MainViewModel : ObservableObject
 
         if (added > 0)
         {
+            AllSelected = Queue.All(i => i.IsSelected);
+            OnPropertyChanged(nameof(SelectedCount));
             SetStatus($"已加入 {added} 个文件到队列", false);
         }
     }
@@ -470,6 +490,54 @@ public sealed partial class MainViewModel : ObservableObject
 
     [RelayCommand]
     private void CancelAll() => _queue.CancelAll();
+
+    [RelayCommand]
+    private void MoveUp()
+    {
+        if (SelectedItem is not null && _queue.MoveUp(SelectedItem.Id))
+        {
+            RebuildQueueFromCore();
+        }
+    }
+
+    [RelayCommand]
+    private void MoveDown()
+    {
+        if (SelectedItem is not null && _queue.MoveDown(SelectedItem.Id))
+        {
+            RebuildQueueFromCore();
+        }
+    }
+
+    [RelayCommand]
+    private void ClearQueue()
+    {
+        var count = _queue.Clear();
+        Queue.Clear();
+        SelectedItem = null;
+        SetStatus($"已清空队列（{count} 项）", false);
+    }
+
+    [RelayCommand]
+    private void ToggleSelectAll()
+    {
+        var target = !AllSelected;
+        _queue.SetAllSelected(target);
+        AllSelected = target;
+        OnPropertyChanged(nameof(SelectedCount));
+    }
+
+    private void RebuildQueueFromCore()
+    {
+        var selectedId = SelectedItem?.Id;
+        Queue.Clear();
+        foreach (var item in _queue.Items)
+        {
+            Queue.Add(item);
+        }
+
+        SelectedItem = _queue.Items.FirstOrDefault(i => i.Id == selectedId) ?? Queue.FirstOrDefault();
+    }
 
     [RelayCommand]
     private void RemoveSelected()
@@ -616,6 +684,8 @@ public sealed partial class MainViewModel : ObservableObject
                 ProgressPercent = percent;
                 ProgressSummary = $"{Queue.IndexOf(item) + 1}/{Queue.Count} · {percent:F0}% · {FormatTimeSpan(p.Processed)} / {FormatTimeSpan(p.Total)}";
             }
+
+            OnPropertyChanged(nameof(SelectedCount));
         }
 
         // QueueItem 已实现 INotifyPropertyChanged，无需替换集合项即可刷新列表

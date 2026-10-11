@@ -66,3 +66,30 @@ WinUI 3 的 `ComboBox` 在**未展开**状态下也会响应 `PointerWheelChange
 
 注意：必须在**子类 override** 里拦截。在 XAML 上给元素挂 `PointerWheelChanged` 事件处理器
 来不及——类的 On* 虚方法先于实例事件处理器执行。
+
+## WinUI 3 陷阱：异步续体的线程亲和性（最坑的一条）
+
+`await ... .ConfigureAwait(false)` 会让续体跑在线程池线程。如果续体里做了
+**触发 `INotifyPropertyChanged.PropertyChanged`** 或操作 UI 的事，WinUI 绑定会静默丢弃
+（或抛错），表现为"状态明明变了，界面就是不刷新"。
+
+本项目踩过的坑：`ConversionQueue.RunAsync` 里对 `ConvertAsync` 用了
+`ConfigureAwait(false)`，`MarkCompleted` 在线程池线程触发 `PropertyChanged`，
+结果队列项永远显示"转换中"，`IsCompleted` 永远为 false（定位按钮、清除已完成全部连带失效）。
+
+规则：
+- 凡是续体中要改"被 UI 绑定的对象"状态，就**不要**用 `ConfigureAwait(false)`
+- 或者显式把通知切回捕获的 `SynchronizationContext`
+- 用 `SingleThreadSynchronizationContext` 写回归测试可以稳定复现和防护这类问题
+
+## XAML 编译崩溃成 WMC9999 时的排查方向
+
+`Xaml Internal Error error WMC9999: 未能找到任何适合于指定区域性的资源` 看起来像环境/资源问题，
+实际经常是 **XAML 引用了不存在的成员**（例如 ViewModel 的 `[RelayCommand]` 特性被挤掉，
+导致 `XxxCommand` 没生成）。排查步骤：
+
+1. 先单独 `dotnet build` 看有没有 CS 错误（级联失败时 XAML 错误会掩盖真正原因）
+2. 检查 XAML 里 `{x:Bind ViewModel.XxxCommand}` 对应的方法是否真的带 `[RelayCommand]`
+3. 用 `git stash` / 逐个回退文件做二分，确认是 XAML 还是 C# 侧引起
+
+另：按行号插入代码时极易把前一行（如 `[RelayCommand]` 特性）据为己有，插完必须复查 diff。
