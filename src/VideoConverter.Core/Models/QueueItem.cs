@@ -1,4 +1,4 @@
-using VideoConverter.Core.Models;
+﻿using VideoConverter.Core.Models;
 
 namespace VideoConverter.Core.Models;
 
@@ -77,6 +77,9 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
     };
 
     public bool IsCompleted => State == QueueItemState.Completed;
+
+    /// <summary>是否未在转换中（驱动单项删除按钮的可见性）。</summary>
+    public bool IsNotConverting => State != QueueItemState.Converting;
 
     /// <summary>该队列项的目标格式摘要，如 "MKV · H.265"。</summary>
     public string TargetSummary
@@ -157,7 +160,7 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
     {
         foreach (var name in new[]
         {
-            nameof(State), nameof(StateText), nameof(IsCompleted), nameof(Progress), nameof(Error), nameof(UsedEncoder),
+            nameof(State), nameof(StateText), nameof(IsCompleted), nameof(IsNotConverting), nameof(Progress), nameof(Error), nameof(UsedEncoder),
         })
         {
             PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));

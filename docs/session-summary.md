@@ -1,4 +1,4 @@
-# 视频格式转换器 - 会话总结
+﻿# 视频格式转换器 - 会话总结
 
 > 本文档记录整个开发过程中的关键决策、用户反馈与进展，随开发持续推进更新。
 > 关联 Trellis 任务：`.trellis/tasks/10-10-video-converter/`
@@ -305,3 +305,68 @@ ffmpeg 直接报 "Only VP8 or VP9 or AV1 video ... supported for WebM"。
 修复：禁用横向滚动（`HorizontalScrollMode="Disabled"` + `HorizontalScrollBarVisibility="Disabled"`），
 强制内容适应视口宽度；同时去掉固定 `MaxWidth=680` 限制，改为随窗口伸缩。
 已实测 1040x660 窗口下内容完整可见，无裁切。
+
+---
+
+## 前端重构二期：三页导航 + 队列卡片化（2026-10-12）
+
+用户批准五步改造方案（NavigationView 骨架 → 全局样式表 → 队列页重构+BUG修复 → 转换页重排 → 轻量按钮）。
+调研结论：参考 Bili.Copilot / FluentLauncher 的 NavigationView + Overrides.xaml 模式。
+
+### 已实施
+
+**1. NavigationView + Frame 三页骨架**（转换 / 队列 / 设置）
+- `MainWindow.xaml`：顶栏（ffmpeg 状态）+ NavigationView + Frame 内容区 + 底部状态栏
+- 拖拽保留在窗口根 Grid 上，任何页面都能拖入文件
+- 队列导航项 InfoBadge 实时显示 运行中+等待中 数量（新增 `ActiveQueueCount` / `QueueBadgeVisibility`）
+
+**2. 全局样式表 `Styles/Overrides.xaml`**（三主题字典 Light/Dark/HighContrast）
+- 语义画刷：AppCardBackground / AppCardBackgroundHover / AppSubtleText / AppQueueItemSelected( Border)
+- 统一样式：CardBorderStyle（卡片容器）、PageScrollViewerStyle（禁横向滚动）、
+  PageTitleStyle / SectionHeaderStyle / SubtleTextStyle / SubtleButtonStyle / SubtleIconButtonStyle
+- 队列项容器 QueueItemContainerStyle：圆角 + hover 背景 + 选中 2px 高亮边框（自绘 ControlTemplate）
+
+**3. 队列页重构 + BUG 修复合并**
+- 卡片化列表项：复选框 + 状态图标（QueueStateToGlyph/BrushConverter）+ 文件名 + 目标格式 + 状态 + 定位/删除按钮
+- 一键开始（开始转换）+ 取消当前 + 全部停止；上移/下移/移除/重试失败项/清除已完成/清空队列
+- 空态提示（队列为空 + 操作引导）
+
+**4. 转换页重排**：添加文件卡片 / 当前文件卡片（缩略图+摘要+详细信息 Expander）/
+转换设置卡片（容器/编码器/质量 + 高级选项 Expander）/ 操作区（开始+取消+进度+批次提示）
+**5. 设置页**：编码器探测状态、强制软件编码、重新探测、输出目录、ffmpeg 来源信息
+
+### 修复的 BUG（含 2 个既有隐患）
+
+1. **WMC9999 XAML 编译器崩溃**：Page 的 XAML 用 `{x:Bind ViewModel.Xxx}` 但 Page 类没有
+   `ViewModel` 属性 → 编译器 NRE。三个 Page 统一加 `public MainViewModel ViewModel => App.ViewModel;`
+   （App.ViewModel 懒加载 + DispatcherQueue.GetForCurrentThread()）
+2. **队列事件未挂接**（既有 bug）：`AttachQueueEvents()` 从未被调用 → 汇总文本/进度条/
+   InfoBadge 全部不更新。MainWindow 构造函数补回调用
+3. **进度条跟踪错对象**（既有 bug）：原来只在 SelectedItem == item 时更新进度，
+   用户选中其他项时进度条冻结。改为始终跟踪正在转换的项
+4. **全选态不同步**：单项取消勾选后全选复选框不回退；空队列时显示已选。
+   新增 SyncAllSelected() 只回写展示态（不触发 SetAllSelected），
+   并订阅每个 QueueItem 的 PropertyChanged（新增 TrackItem/UntrackItem）
+5. **RemoveSelected 与核心队列不同步**：_queue.Remove 失败（转换中）时 UI 仍移除 → 双链脱节。
+   改为公共 RemoveItem() 统一处理，失败给状态提示
+6. RetryFailed 无失败项时误启动转换；ClearQueue 运行中可清空正在跑的任务 —— 都加了守卫
+
+### 验证状态
+
+**自动化已通过**：构建 0 错 0 警；142 单测全绿；三页渲染截图验证（空态/有文件/
+转换中/已完成/设置页）；队列卡片四态、选中高亮、定位按钮、InfoBadge 计数、
+完整转换流程（3 文件 libx264 成功）、冲突后缀 _converted_1、参数摘要回退注解。
+
+**自动化不稳定转人工**（文件选择对话框）：
+新版 Shell 对话框的遗留控件（Edit aid=1148 / 打开 aid=1）不响应 WM_SETTEXT/BM_CLICK，
+UIA ValuePattern/InvokePattern 均不支持；键盘输入被 autocomplete 下拉吞掉首个字符；
+模拟 OLE 拖拽未产生真实放置。多次卡壳后按用户规则转人工。
+遗留工具：tools/ui-shot.ps1（截图，需先设 Per-Monitor-V2 DPI 感知否则坐标被虚拟化）、
+tools/ui-nav.ps1（UIA 点击/选中控件）。
+
+### 待人工验收
+
+- 文件选择对话框选文件入队、去重提示
+- 转换中汇总文本/进度条实时更新（AttachQueueEvents 修复）
+- 全选/取消全选、单项移除、清除已完成、定位产物、上移/下移
+- 取消当前/全部停止后的状态与残留文件处理

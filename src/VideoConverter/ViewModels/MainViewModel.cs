@@ -1,4 +1,5 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI;
@@ -73,6 +74,7 @@ public sealed partial class MainViewModel : ObservableObject
         StatusBrush = NormalTextBrush;
         ProgressSummary = "队列空闲";
         _ = ProbeEncodersAsync();
+        RefreshQueueSummary();
     }
 
     public ObservableCollection<QueueItem> Queue { get; }
@@ -104,7 +106,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     private bool _allSelected = true;
 
-    /// <summary>Queue header select-all checkbox.</summary>
+    /// <summary>Queue header select-all checkbox. Setting it applies to every item.</summary>
     public bool AllSelected
     {
         get => _allSelected;
@@ -118,8 +120,94 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// 只回写全选复选框的展示态，不触发 SetAllSelected，
+    /// 避免把用户刚取消的单项又默默全选上。
+    /// </summary>
+    private void SyncAllSelected()
+    {
+        var all = Queue.Count > 0 && Queue.All(i => i.IsSelected);
+        if (_allSelected != all)
+        {
+            SetProperty(ref _allSelected, all, nameof(AllSelected));
+        }
+    }
+
+    /// <summary>队列是否为空（驱动空态提示）。</summary>
+    public bool QueueEmpty => Queue.Count == 0;
+
+    /// <summary>是否存在失败任务（驱动重试失败项按钮）。</summary>
+    public bool HasFailedItems => Queue.Any(i => i.State == QueueItemState.Failed);
+
+    /// <summary>开始转换按钮的可用条件：未在运行且有勾选的待转换任务。</summary>
+    public bool CanStartConvert => !IsRunning && SelectedCount > 0;
+
+    /// <summary>开始按钮下方的批次提示，例如：将转换 3 个勾选任务。</summary>
+    public string BatchHintText
+    {
+        get
+        {
+            if (!Queue.Any(i => i.State == QueueItemState.Pending))
+            {
+                return "队列中没有待转换任务";
+            }
+
+            return SelectedCount > 0
+                ? $"将转换 {SelectedCount} 个勾选任务"
+                : "未勾选任何任务，请先在队列中勾选";
+        }
+    }
+
     /// <summary>Checked and still-pending items.</summary>
     public int SelectedCount => Queue.Count(i => i.IsSelected && i.State == QueueItemState.Pending);
+
+    /// <summary>Queue page header summary, e.g. "4 items - 1 running, 3 waiting".</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectedCount))]
+    private string _queueSummaryText = "队列为空";
+
+    private int _activeQueueCount;
+
+    /// <summary>运行中 + 等待中 的任务数，驱动导航项 InfoBadge。</summary>
+    public int ActiveQueueCount
+    {
+        get => _activeQueueCount;
+        private set => SetProperty(ref _activeQueueCount, value);
+    }
+
+    /// <summary>队列徽标可见性：有活动任务时才显示，避免空闲时挂着 0。</summary>
+    public Visibility QueueBadgeVisibility => ActiveQueueCount > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    private void RefreshQueueSummary()
+    {
+        var total = Queue.Count;
+        if (total == 0)
+        {
+            QueueSummaryText = "队列为空";
+            return;
+        }
+
+        var running = Queue.Count(i => i.State == QueueItemState.Converting);
+        var waiting = Queue.Count(i => i.State == QueueItemState.Pending);
+        var done = Queue.Count(i => i.State == QueueItemState.Completed);
+        var failed = Queue.Count(i => i.State == QueueItemState.Failed && i.Error?.Contains("已取消") != true);
+
+        var parts = new List<string>();
+        if (running > 0) parts.Add($"转换中 {running}");
+        if (waiting > 0) parts.Add($"等待中 {waiting}");
+        if (done > 0) parts.Add($"已完成 {done}");
+        if (failed > 0) parts.Add($"失败 {failed}");
+        QueueSummaryText = $"共 {total} 项 · " + string.Join(" · ", parts);
+
+        ActiveQueueCount = running + waiting;
+        OnPropertyChanged(nameof(QueueBadgeVisibility));
+
+        SyncAllSelected();
+        OnPropertyChanged(nameof(QueueEmpty));
+        OnPropertyChanged(nameof(HasFailedItems));
+        OnPropertyChanged(nameof(CanStartConvert));
+        OnPropertyChanged(nameof(BatchHintText));
+    }
     [ObservableProperty]
     private int _crf = 23;
 
@@ -186,6 +274,8 @@ public sealed partial class MainViewModel : ObservableObject
     private Visibility _ffmpegWarningVisibility = Visibility.Collapsed;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanStartConvert))]
+    [NotifyPropertyChangedFor(nameof(BatchHintText))]
     private bool _isRunning;
 
     [ObservableProperty]
@@ -473,6 +563,7 @@ public sealed partial class MainViewModel : ObservableObject
             }
 
             var item = _queue.Enqueue(path, BuildSettings(), info);
+            TrackItem(item);
             Queue.Add(item);
             SelectedItem ??= item;
             added++;
@@ -480,7 +571,6 @@ public sealed partial class MainViewModel : ObservableObject
 
         if (added > 0)
         {
-            AllSelected = Queue.All(i => i.IsSelected);
             OnPropertyChanged(nameof(SelectedCount));
         }
 
@@ -493,6 +583,8 @@ public sealed partial class MainViewModel : ObservableObject
                 : $"已加入 {added} 个文件到队列";
             SetStatus(message, false);
         }
+
+        RefreshQueueSummary();
     }
 
     [RelayCommand]
@@ -535,13 +627,16 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task ConvertAsync()
     {
-        if (!Queue.Any(i => i.State == QueueItemState.Pending))
+        if (SelectedCount == 0)
         {
-            SetStatus("队列中没有待转换的任务", true);
+            SetStatus(Queue.Any(i => i.State == QueueItemState.Pending)
+                ? "没有勾选任何待转换任务，请先在队列中勾选"
+                : "队列中没有待转换的任务", true);
             return;
         }
 
         IsRunning = true;
+        ProgressPercent = 0;
         ProgressSummary = "准备中…";
 
         try
@@ -585,9 +680,21 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void ClearQueue()
     {
+        if (IsRunning)
+        {
+            SetStatus("队列运行中，请先停止再清空", true);
+            return;
+        }
+
+        foreach (var item in Queue)
+        {
+            UntrackItem(item);
+        }
+
         var count = _queue.Clear();
         Queue.Clear();
         SelectedItem = null;
+        RefreshQueueSummary();
         SetStatus($"已清空队列（{count} 项）", false);
     }
 
@@ -610,19 +717,35 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         SelectedItem = _queue.Items.FirstOrDefault(i => i.Id == selectedId) ?? Queue.FirstOrDefault();
+        RefreshQueueSummary();
     }
 
     [RelayCommand]
-    private void RemoveSelected()
+    private void RemoveSelected() => RemoveItem(SelectedItem);
+
+    /// <summary>移除单个队列项（列表项上的删除按钮直接调用）。转换中的项不可移除。</summary>
+    public void RemoveItem(QueueItem? item)
     {
-        if (SelectedItem is null)
+        if (item is null)
         {
             return;
         }
 
-        _queue.Remove(SelectedItem.Id);
-        Queue.Remove(SelectedItem);
-        SelectedItem = Queue.FirstOrDefault();
+        if (!_queue.Remove(item.Id))
+        {
+            SetStatus("正在转换的任务无法移除，可先取消当前任务", true);
+            return;
+        }
+
+        UntrackItem(item);
+        Queue.Remove(item);
+        if (SelectedItem == item)
+        {
+            SelectedItem = Queue.FirstOrDefault();
+        }
+
+        RefreshQueueSummary();
+        SetStatus($"已移除 {item.FileName}", false);
     }
 
     [RelayCommand]
@@ -631,18 +754,28 @@ public sealed partial class MainViewModel : ObservableObject
         var completed = Queue.Where(i => i.State == QueueItemState.Completed).ToList();
         foreach (var item in completed)
         {
+            UntrackItem(item);
             Queue.Remove(item);
         }
 
         _queue.ClearCompleted();
         SelectedItem = Queue.FirstOrDefault();
+        RefreshQueueSummary();
         SetStatus($"已清除 {completed.Count} 个已完成任务", false);
     }
 
     [RelayCommand]
     private async Task RetryFailedAsync()
     {
-        _queue.RetryFailed();
+        var retried = _queue.RetryFailed();
+        if (retried == 0)
+        {
+            SetStatus("没有失败的任务", true);
+            return;
+        }
+
+        RefreshQueueSummary();
+        SetStatus($"已重新加入 {retried} 个失败任务", false);
         await ConvertAsync();
     }
 
@@ -749,19 +882,22 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void OnQueueItemChanged(QueueItem item)
     {
+        // 进度条始终跟踪正在转换的那一项，与用户当前选中哪一项无关
+        if (item.State == QueueItemState.Converting && item.Progress is { } p && p.Percent is { } percent)
+        {
+            ProgressPercent = percent;
+            ProgressSummary = $"{item.FileName} · {percent:F0}% · {FormatTimeSpan(p.Processed)} / {FormatTimeSpan(p.Total)}";
+        }
+
         if (SelectedItem == item)
         {
             OutputPathText = item.OutputPath;
-            if (item.Progress is { } p && item.State == QueueItemState.Converting && p.Percent is { } percent)
-            {
-                ProgressPercent = percent;
-                ProgressSummary = $"{Queue.IndexOf(item) + 1}/{Queue.Count} · {percent:F0}% · {FormatTimeSpan(p.Processed)} / {FormatTimeSpan(p.Total)}";
-            }
-
-            OnPropertyChanged(nameof(SelectedCount));
         }
 
+        OnPropertyChanged(nameof(SelectedCount));
+
         // QueueItem 已实现 INotifyPropertyChanged，无需替换集合项即可刷新列表
+        RefreshQueueSummary();
     }
 
     private void OnQueueFinished(QueueSummary summary)
@@ -770,6 +906,37 @@ public sealed partial class MainViewModel : ObservableObject
             ? "队列已取消"
             : $"完成 {summary.Completed} 个，失败 {summary.Failed} 个，取消 {summary.Cancelled} 个";
         SetStatus(ProgressSummary, summary.Failed > 0);
+        ProgressPercent = 0;
+        RefreshQueueSummary();
+    }
+
+    // ---- 队列项属性订阅（复选框勾选态变化需要回写全选态与计数） ----
+
+    private void TrackItem(QueueItem item) => item.PropertyChanged += OnQueueItemPropertyChanged;
+
+    private void UntrackItem(QueueItem item) => item.PropertyChanged -= OnQueueItemPropertyChanged;
+
+    private void OnQueueItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(QueueItem.IsSelected))
+        {
+            return;
+        }
+
+        if (!_dispatcher.HasThreadAccess)
+        {
+            _dispatcher.TryEnqueue(() =>
+            {
+                SyncAllSelected();
+                OnPropertyChanged(nameof(SelectedCount));
+                OnPropertyChanged(nameof(BatchHintText));
+            });
+            return;
+        }
+
+        SyncAllSelected();
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(BatchHintText));
     }
 
     // ---- 辅助 ----

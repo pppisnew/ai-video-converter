@@ -1,4 +1,4 @@
-using Microsoft.UI;
+﻿using Microsoft.UI;
 using Windows.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
@@ -31,11 +31,11 @@ public sealed class QueueStateToGlyphConverter : IValueConverter
     public object Convert(object value, Type targetType, object parameter, string language) =>
         value switch
         {
-            QueueItemState.Pending => "&#xE892;",      // 时钟
-            QueueItemState.Converting => "&#xE768;",   // 播放
-            QueueItemState.Completed => "&#xE73E;",    // 对勾
-            QueueItemState.Failed => "&#xEA39;",       // 错误
-            _ => "&#xE9CE;",
+            QueueItemState.Pending => "\uE892",      // 时钟
+            QueueItemState.Converting => "\uE768",   // 播放
+            QueueItemState.Completed => "\uE73E",    // 对勾
+            QueueItemState.Failed => "\uEA39",       // 错误
+            _ => "\uE9CE",
         };
 
     public object ConvertBack(object value, Type targetType, object parameter, string language) =>
@@ -61,4 +61,14 @@ public sealed class QueueStateToBrushConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, string language) =>
         throw new NotSupportedException();
+}
+
+/// <summary>bool -> Visibility（x:Bind 不隐式转换，显式走转换器）。</summary>
+public sealed class BoolToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language) =>
+        value is true ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+        value is Visibility.Visible;
 }
