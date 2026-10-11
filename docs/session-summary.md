@@ -181,3 +181,16 @@ NVENC（需 610+）/QSV（无 Intel GPU）/AMF（无 AMD GPU）**全部实测不
 
 UI 自动化已验证：容器切换联动（WebM 只剩 VP9/AV1）、参数摘要实时刷新、
 质量归一化端到端（滑杆 51 → 实际 crf 63）、重置默认。
+
+### 误触 bug 修复（2026-10-11）
+
+用户实测发现：**ComboBox 未展开时，滚轮滑动会静默修改选中项**——滚动页面时参数被意外改动。
+这是 WinUI 3 ComboBox 的已知行为（收起状态也响应 PointerWheelChanged）。
+Slider 与 NumberBox 存在同样问题，一并修复。
+
+实现：`src/VideoConverter/Controls/NoWheelControls.cs` 三个子类，
+重写 `OnPointerWheelChanged`，仅在"下拉已展开 / 控件已获焦点"时才放行到基类。
+（WinUI 3 无 `IsFocused` 属性，需用 `FocusState == FocusState.Unfocused` 判断。）
+
+自动化验证：鼠标悬停编码器下拉框连发 10 次滚轮，选中项始终为"自动（优先硬件）"；
+质量滑杆与音频码率框在未聚焦状态下各发 5-6 次滚轮，数值均无变化。

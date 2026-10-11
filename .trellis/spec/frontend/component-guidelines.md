@@ -51,3 +51,18 @@
   导致 UIA 按 Name 匹配失败。
 - 所有需要自动化操作的控件必须设置 ASCII 的 `AutomationProperties.AutomationId`，
   测试脚本按 Id 定位；中文只用于人眼可见的 `AutomationProperties.Name`。
+
+## 滚轮误触（WinUI 3 已知行为）
+
+WinUI 3 的 `ComboBox` 在**未展开**状态下也会响应 `PointerWheelChanged` 改变选中项，
+`Slider` / `NumberBox` 同样会在未聚焦时响应滚轮改值。用户滚动页面时参数被静默修改。
+
+修复：子类化并重写 `OnPointerWheelChanged`，不满足条件时置 `e.Handled = true` 且不调用 base
+（见 `src/VideoConverter/Controls/NoWheelControls.cs`）：
+
+- ComboBox：仅 `IsDropDownOpen == true` 时放行
+- Slider / NumberBox：仅 `FocusState != FocusState.Unfocused` 时放行
+  （WinUI 3 没有 `IsFocused` 属性）
+
+注意：必须在**子类 override** 里拦截。在 XAML 上给元素挂 `PointerWheelChanged` 事件处理器
+来不及——类的 On* 虚方法先于实例事件处理器执行。
