@@ -177,9 +177,13 @@ public class ConversionQueueTests
         await run;
 
         Assert.Equal(QueueItemState.Failed, queue.Items[0].State);
-        Assert.Equal(QueueItemState.Pending, queue.Items[1].State);
-        Assert.Equal(QueueItemState.Pending, queue.Items[2].State);
-        Assert.Single(service.ConvertedInputs);
+        Assert.Equal(QueueItemState.Failed, queue.Items[0].State);
+        // never-started items are marked cancelled too, so no phantom waiting rows remain
+        Assert.All(queue.Items.Skip(1), i =>
+        {
+            Assert.Equal(QueueItemState.Failed, i.State);
+            Assert.Contains("已取消", i.Error);
+        });
     }
 
     [Fact]
@@ -397,5 +401,137 @@ public class ConversionQueueSelectionTests
                 item.Item1(item.Item2);
             }
         }
+    }
+}
+
+public class EncoderContainerCompatibilityTests
+{
+    private static FfmpegBinaries Binaries() =>
+        new(TestMediaFactory.FfmpegPath, TestMediaFactory.FfprobePath, FfmpegSource.SystemPath);
+
+    [Theory]
+    [InlineData(".webm", "libvpx-vp9")]   // Auto + WebM must NOT resolve to libx264
+    [InlineData(".mp4", "libx264")]
+    [InlineData(".mkv", "libx264")]
+    [InlineData(".avi", "libx264")]
+    public async Task ResolveEncoder_AutoRespectsContainerRestrictions(string container, string expectedEncoder)
+    {
+        var probe = new EncoderProbeService(Binaries(), Path.Combine(Path.GetTempPath(), "vc-probe-" + Guid.NewGuid().ToString("N")));
+        await probe.EnsureProbedAsync();
+        var settings = ConversionSettingsPresets.New(container) with { Encoder = VideoEncoderChoice.Auto };
+
+        var descriptor = probe.ResolveEncoder(settings);
+
+        Assert.NotNull(descriptor);
+        Assert.Equal(expectedEncoder, descriptor!.FfmpegName);
+    }
+
+    [Fact]
+    public async Task ResolveEncoder_AutoForWebM_NeverReturnsSoftwareH264()
+    {
+        // Regression: Auto used to scan H264 -> H265 -> AV1 -> VP9 and fall back to libx264,
+        // which the WebM muxer rejects ("Only VP8 or VP9 or AV1 video ... supported for WebM").
+        var probe = new EncoderProbeService(Binaries(), Path.Combine(Path.GetTempPath(), "vc-probe-" + Guid.NewGuid().ToString("N")));
+        await probe.EnsureProbedAsync();
+        var settings = ConversionSettingsPresets.New(".webm") with { Encoder = VideoEncoderChoice.Auto };
+
+        var descriptor = probe.ResolveEncoder(settings);
+
+        Assert.NotNull(descriptor);
+        Assert.Equal(VideoCodecKind.Vp9, descriptor!.Codec);
+    }
+
+    [Theory]
+    [InlineData(".mp4")]
+    [InlineData(".mkv")]
+    [InlineData(".webm")]
+    public async Task ConvertAsync_AutoEncoder_ProducesPlayableOutput(string container)
+    {
+        var binaries = Binaries();
+        var probeService = new FfprobeMediaProbeService(binaries);
+        var probe = new EncoderProbeService(binaries, Path.Combine(Path.GetTempPath(), "vc-probe-" + Guid.NewGuid().ToString("N")));
+        await probe.EnsureProbedAsync();
+        var service = new FfmpegConversionService(binaries, probeService, probe);
+        var dir = TestMediaFactory.CreateTempDirectory();
+        var input = await TestMediaFactory.CreateSampleVideoAsync(Path.Combine(dir, "in.mp4"));
+        var settings = ConversionSettingsPresets.New(container) with { Encoder = VideoEncoderChoice.Auto };
+        var output = Path.Combine(dir, "out" + container);
+
+        var result = await service.ConvertAsync(input, output, settings);
+
+        Assert.True(result.Success, result.Error);
+        Assert.True(File.Exists(output));
+        var info = await probeService.ProbeAsync(output);
+        Assert.True(EncoderCatalog.IsCompatible(container,
+            info.VideoCodec == "h264" ? VideoEncoderChoice.H264
+            : info.VideoCodec == "hevc" ? VideoEncoderChoice.H265
+            : info.VideoCodec == "vp9" ? VideoEncoderChoice.Vp9
+            : VideoEncoderChoice.Av1));
+    }
+}
+
+public class ConversionQueueDuplicateTests
+{
+    private static ConversionSettings Settings() => ConversionSettingsPresets.New(".mp4");
+
+    private static string TempInput(string name)
+    {
+        var path = Path.Combine(Path.GetTempPath(), "vc-dup2-" + Guid.NewGuid().ToString("N"), name);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "x");
+        return path;
+    }
+
+    [Fact]
+    public void Contains_MatchesByFullPathIgnoringCase()
+    {
+        var queue = new ConversionQueue(new FakeConversionService(_ => ConversionResult.Ok("out")));
+        var path = TempInput("a.mp4");
+        queue.Enqueue(path, Settings());
+
+        Assert.True(queue.Contains(path));
+        Assert.True(queue.Contains(path.ToUpperInvariant()));
+        Assert.False(queue.Contains(TempInput("b.mp4")));
+    }
+
+    [Fact]
+    public async Task CancelAll_MarksNeverStartedItemsAsCancelled()
+    {
+        // After an explicit stop, Pending items must not keep claiming to be waiting.
+        var firstSeen = new TaskCompletionSource();
+        var service = new FakeConversionService(_ => ConversionResult.Ok("out"), _ => firstSeen.TrySetResult());
+        var queue = new ConversionQueue(service);
+        queue.Enqueue(TempInput("a.mp4"), Settings());
+        queue.Enqueue(TempInput("b.mp4"), Settings());
+        queue.Enqueue(TempInput("c.mp4"), Settings());
+
+        var run = queue.RunAsync();
+        await firstSeen.Task;
+        queue.CancelAll();
+        await run;
+
+        Assert.Equal(QueueItemState.Failed, queue.Items[0].State);
+        Assert.Contains("已取消", queue.Items[0].Error);
+        Assert.All(queue.Items.Skip(1), i =>
+        {
+            Assert.Equal(QueueItemState.Failed, i.State);
+            Assert.Contains("已取消", i.Error);
+        });
+    }
+
+    [Fact]
+    public void UpdateSettings_ChangesTargetAndOutputPath()
+    {
+        var queue = new ConversionQueue(new FakeConversionService(_ => ConversionResult.Ok("out")));
+        var item = queue.Enqueue(TempInput("clip.mp4"), ConversionSettingsPresets.New(".mp4"));
+        Assert.Contains("MP4", item.TargetSummary);
+
+        var newSettings = ConversionSettingsPresets.New(".mkv") with { Encoder = VideoEncoderChoice.H265 };
+        var newOutput = queue.ResolveOutputPathFor(item.InputPath, newSettings);
+        item.UpdateSettings(newSettings, newOutput);
+
+        Assert.Contains("MKV", item.TargetSummary);
+        Assert.Contains("H.265", item.TargetSummary);
+        Assert.EndsWith(".mkv", item.OutputPath);
     }
 }

@@ -25,7 +25,17 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
     public string Id { get; }
     public string InputPath { get; }
     public string OutputPath { get; set; }
-    public ConversionSettings Settings { get; }
+    public ConversionSettings Settings { get; private set; }
+
+    /// <summary>更新参数并重算输出路径（参数面板变更时同步到待转换项）。</summary>
+    public void UpdateSettings(ConversionSettings settings, string outputPath)
+    {
+        Settings = settings;
+        OutputPath = outputPath;
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Settings)));
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(TargetSummary)));
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(OutputPath)));
+    }
     public MediaInfo? Info { get; init; }
 
     public QueueItemState State { get; private set; } = QueueItemState.Pending;
@@ -67,6 +77,30 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
     };
 
     public bool IsCompleted => State == QueueItemState.Completed;
+
+    /// <summary>该队列项的目标格式摘要，如 "MKV · H.265"。</summary>
+    public string TargetSummary
+    {
+        get
+        {
+            if (Settings.AudioOnly)
+            {
+                return "MP3 · 仅音频";
+            }
+
+            var codec = Settings.Encoder switch
+            {
+                VideoEncoderChoice.Auto => "自动",
+                VideoEncoderChoice.H264 => "H.264",
+                VideoEncoderChoice.H265 => "H.265",
+                VideoEncoderChoice.Av1 => "AV1",
+                VideoEncoderChoice.Vp9 => "VP9",
+                _ => "自动",
+            };
+
+            return $"{Settings.Container.TrimStart('.').ToUpperInvariant()} · {codec}";
+        }
+    }
 
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 

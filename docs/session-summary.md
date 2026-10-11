@@ -229,3 +229,27 @@ GUI 实测验证通过：等待中 → 转换中 77% → 已完成（libx264）�
 （导致 XAML 编译崩溃成 WMC9999 资源错误，极具误导性）；入队后的 `if` 语句被插坏。
 
 测试 127/127 通过。
+
+### 用户实测反馈与修复（2026-10-11 第三轮）
+
+**1. 多文件入队无去重** → `IConversionQueue.Contains(path)` 按完整路径（忽略大小写）判重，
+重复文件跳过并提示"跳过 N 个重复文件"。
+
+**2. 全选样式与行为** → 改为带"全选"文字标签的标准复选框；去掉 Command 与 IsChecked
+双向绑定并存导致的双重触发，逻辑收敛到 `AllSelected` setter（直接调用 `SetAllSelected`）。
+
+**3. 全部停止后残留"等待中"** → `CancelAll` 现在把未启动的 Pending 项一并标记为"已取消"，
+队列状态不再自相矛盾（可用"重试失败"恢复）。
+
+**4. H.265 / AV1 / VP9 全部转换失败（最严重）** → 根因是 `Auto` 编码器解析**没有考虑容器限制**：
+按 H264→H265→AV1→VP9 扫描后回落到 `libx264`，而 WebM 容器只支持 VP8/VP9/AV1，
+ffmpeg 直接报 "Only VP8 or VP9 or AV1 video ... supported for WebM"。
+用户看到的失败是入队时捕获的旧容器（.webm）+ Auto 解析出的 libx264。
+
+修复：`ResolveEncoder` 跳过容器不接受的编码格式，最终回退也改为"容器允许的第一个编码格式的软件编码器"。
+同时参数面板的任何变更会同步到队列中所有**待转换**项（保证"一键转成同一格式"的语义），
+队列行新增目标格式摘要（如 "MKV · H.265"）让捕获的参数可见。
+
+回归测试：`ResolveEncoder_AutoForWebM_NeverReturnsSoftwareH264`、
+`ConvertAsync_AutoEncoder_ProducesPlayableOutput`(mp4/mkv/webm)、去重、取消语义、参数更新。
+共 138 个测试全绿。GUI 实测：WebM+Auto → VP9（软件），非法组合自动纠正。

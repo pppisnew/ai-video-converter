@@ -109,6 +109,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _allSelected, value))
             {
+                _queue.SetAllSelected(value);
                 OnPropertyChanged(nameof(SelectedCount));
             }
         }
@@ -307,8 +308,27 @@ public sealed partial class MainViewModel : ObservableObject
         ForceSoftware = ForceSoftware,
     };
 
+    /// <summary>
+    /// Parameter-panel changes are pushed to every Pending queue item so that "convert
+    /// everything to one format" stays true. Finished/failed items keep their settings.
+    /// </summary>
+    private void SyncSettingsToPendingItems()
+    {
+        var settings = BuildSettings();
+        foreach (var item in Queue.Where(i => i.State == QueueItemState.Pending))
+        {
+            var output = _queue.ResolveOutputPathFor(item.InputPath, settings);
+            item.UpdateSettings(settings, output);
+            if (SelectedItem == item)
+            {
+                OutputPathText = item.OutputPath;
+            }
+        }
+    }
+
     private void UpdateSummary()
     {
+        SyncSettingsToPendingItems();
         var settings = BuildSettings();
 
         if (settings.AudioOnly)
@@ -390,10 +410,17 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         var added = 0;
+        var skipped = 0;
         foreach (var path in paths)
         {
             if (!File.Exists(path))
             {
+                continue;
+            }
+
+            if (_queue.Contains(path))
+            {
+                skipped++;
                 continue;
             }
 

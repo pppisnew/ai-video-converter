@@ -35,3 +35,16 @@
 
 Core 层保持零第三方依赖。评估过 FFMpegCore（2099 stars, MIT）后放弃：
 需求面窄、进度与取消需自掌控、其下载扩展的 ffmpeg 版本过旧（6.1）。
+
+## Auto 编码器选择必须考虑容器限制
+
+按优先级扫描编码格式时，**必须先过滤掉当前容器不支持的格式**，否则最终回退值可能非法。
+踩坑：`Auto` 按 H264→H265→AV1→VP9 扫描，都没命中硬件编码器时回落到 `libx264`；
+若容器是 `.webm`，ffmpeg 直接拒绝（"Only VP8 or VP9 or AV1 video ... supported for WebM"），
+用户看到的就是"转换失败"且错误信息指向 muxer，很难反推到编码器选择逻辑。
+
+规则：`EncoderCatalog.IsCompatible(container, choice)` 不通过的 kind 直接 `continue`；
+兜底值取 `AllowedEncoders(container).First()` 的软件编码器，取不到就返回 null。
+
+另：参数面板变更要同步到队列中所有 Pending 项，并在队列行展示每项的目标格式，
+否则用户改了面板以为生效，实际用的是入队时捕获的旧参数。

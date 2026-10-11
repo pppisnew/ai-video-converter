@@ -31,6 +31,12 @@ public interface IConversionQueue
     /// <summary>Remove every item; returns how many were dropped.</summary>
     int Clear();
 
+    /// <summary>True when the file is already queued (full path, case-insensitive).</summary>
+    bool Contains(string inputPath);
+
+    /// <summary>Recompute the default output path for a file under the given settings.</summary>
+    string ResolveOutputPathFor(string inputPath, ConversionSettings settings);
+
     int RetryFailed();
 
     Task RunAsync(CancellationToken cancellationToken = default);
@@ -75,6 +81,10 @@ public sealed class ConversionQueue : IConversionQueue
         ItemChanged?.Invoke(item);
         return item;
     }
+
+    /// <summary>True when the file is already queued (full path, case-insensitive).</summary>
+    public bool Contains(string inputPath) =>
+        _items.Any(i => string.Equals(i.InputPath, inputPath, StringComparison.OrdinalIgnoreCase));
 
     public bool Remove(string itemId)
     {
@@ -254,6 +264,15 @@ public sealed class ConversionQueue : IConversionQueue
         _queueCts?.Cancel();
         var current = _items.FirstOrDefault(i => i.State == QueueItemState.Converting);
         current?.Cancellation?.Cancel();
+
+        // Leaving never-started items on Pending after an explicit stop is misleading:
+        // the queue is not going to run them. Mark them cancelled so the list stays honest.
+        foreach (var item in _items.Where(i => i.State == QueueItemState.Pending).ToList())
+        {
+            item.MarkFailed("已取消", cancelled: true);
+            _cancelledCount++;
+            ItemChanged?.Invoke(item);
+        }
     }
 
     /// <summary>
@@ -262,6 +281,10 @@ public sealed class ConversionQueue : IConversionQueue
     /// （后者在文件尚未生成时也会发生，例如两个队列项被指定了同一输出目录）。
     /// 冲突时追加 _1/_2… 序号，单调递增、不回收。
     /// </summary>
+    /// <summary>Public wrapper so the UI can recompute an item's output path.</summary>
+    public string ResolveOutputPathFor(string inputPath, ConversionSettings settings) =>
+        ResolveOutputPath(inputPath, settings);
+
     internal string ResolveOutputPath(string inputPath, ConversionSettings settings)
     {
         var directory = Path.GetDirectoryName(inputPath);

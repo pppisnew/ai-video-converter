@@ -131,6 +131,15 @@ public sealed class EncoderProbeService : IEncoderProbeService
 
         foreach (var kind in preferred)
         {
+            // The container restricts which codecs are legal (WebM rejects H.264/H.265,
+            // AVI is H.264 only). Auto must skip illegal kinds instead of falling back to a
+            // codec the muxer will refuse - that used to make Auto + WebM resolve to libx264
+            // and fail with "Only VP8 or VP9 or AV1 video ... supported for WebM".
+            if (!EncoderCatalog.IsCompatible(settings.Container, ChoiceOf(kind)))
+            {
+                continue;
+            }
+
             if (snapshot is not null)
             {
                 foreach (var candidate in EncoderCatalog.HardwareCandidates(kind))
@@ -142,8 +151,8 @@ public sealed class EncoderProbeService : IEncoderProbeService
                 }
             }
 
-            // Auto 模式：只在没有可用硬件编码器时回落到软件；
-            // 指定了具体编码格式时，该格式的软件编码器是最终保障
+            // Auto keeps scanning for a hardware encoder; an explicit choice falls back
+            // straight to that codec's software encoder.
             if (settings.Encoder == VideoEncoderChoice.Auto)
             {
                 continue;
@@ -152,8 +161,20 @@ public sealed class EncoderProbeService : IEncoderProbeService
             return SoftwareEncoderFor(settings.Encoder);
         }
 
-        return SoftwareEncoderFor(VideoEncoderChoice.H264);
+        // Nothing matched: fall back to the software encoder for the first codec the
+        // container actually accepts.
+        var fallback = EncoderCatalog.AllowedEncoders(settings.Container).FirstOrDefault();
+        return fallback == VideoEncoderChoice.Auto ? null : SoftwareEncoderFor(fallback);
     }
+
+    private static VideoEncoderChoice ChoiceOf(VideoCodecKind kind) => kind switch
+    {
+        VideoCodecKind.H264 => VideoEncoderChoice.H264,
+        VideoCodecKind.H265 => VideoEncoderChoice.H265,
+        VideoCodecKind.Av1 => VideoEncoderChoice.Av1,
+        VideoCodecKind.Vp9 => VideoEncoderChoice.Vp9,
+        _ => VideoEncoderChoice.Auto,
+    };
 
     private static EncoderDescriptor? SoftwareEncoderFor(VideoEncoderChoice choice)
     {
