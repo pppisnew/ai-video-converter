@@ -11,7 +11,7 @@ public enum QueueItemState
 }
 
 /// <summary>队列中的一个转换任务。</summary>
-public sealed class QueueItem
+public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
 {
     public QueueItem(string inputPath, string outputPath, ConversionSettings settings, MediaInfo? info = null)
     {
@@ -36,15 +36,37 @@ public sealed class QueueItem
 
     public string FileName => System.IO.Path.GetFileName(InputPath);
 
+    /// <summary>队列项状态的中文展示文本（UI 无关，供列表直接绑定）。</summary>
+    public string StateText => State switch
+    {
+        QueueItemState.Pending => "等待中",
+        QueueItemState.Converting => Progress is { Percent: { } percent }
+            ? $"转换中 {percent:F0}%"
+            : "转换中",
+        QueueItemState.Completed => $"已完成（{UsedEncoder}）",
+        QueueItemState.Failed => string.IsNullOrEmpty(Error) ? "失败" : $"失败：{Error}",
+        _ => string.Empty,
+    };
+
+    public bool IsCompleted => State == QueueItemState.Completed;
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
     public void MarkConverting(CancellationTokenSource cts)
     {
         State = QueueItemState.Converting;
         Cancellation = cts;
         Progress = null;
         Error = null;
+        RaiseAll();
     }
 
-    public void UpdateProgress(ConversionProgress progress) => Progress = progress;
+    public void UpdateProgress(ConversionProgress progress)
+    {
+        Progress = progress;
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Progress)));
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(StateText)));
+    }
 
     public void MarkCompleted(string usedEncoder)
     {
@@ -53,6 +75,7 @@ public sealed class QueueItem
         Progress = null;
         Cancellation?.Dispose();
         Cancellation = null;
+        RaiseAll();
     }
 
     public void MarkFailed(string error, bool cancelled = false)
@@ -66,6 +89,7 @@ public sealed class QueueItem
 
         Cancellation?.Dispose();
         Cancellation = null;
+        RaiseAll();
     }
 
     public void ResetForRetry()
@@ -74,5 +98,17 @@ public sealed class QueueItem
         Progress = null;
         Error = null;
         UsedEncoder = null;
+        RaiseAll();
+    }
+
+    private void RaiseAll()
+    {
+        foreach (var name in new[]
+        {
+            nameof(State), nameof(StateText), nameof(IsCompleted), nameof(Progress), nameof(Error), nameof(UsedEncoder),
+        })
+        {
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
+        }
     }
 }

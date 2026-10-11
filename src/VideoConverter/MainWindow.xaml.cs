@@ -1,9 +1,10 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Windowing;
+using Windows.Graphics;
+using Microsoft.UI.Xaml.Media;
 using VideoConverter.ViewModels;
 using Windows.ApplicationModel.DataTransfer;
-using Windows.Graphics;
 using Windows.Storage;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
@@ -23,18 +24,19 @@ public sealed partial class MainWindow : Window
         ViewModel = new MainViewModel(new Core.Services.FfmpegLocator(), DispatcherQueue);
         InitializeComponent();
         ConfigureWindow();
+        ViewModel.AttachQueueEvents();
     }
 
     public MainViewModel ViewModel { get; }
 
     private void ConfigureWindow()
     {
-        AppWindow.Resize(new SizeInt32(1180, 780));
+        AppWindow.Resize(new SizeInt32(1280, 820));
 
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
-            presenter.PreferredMinimumWidth = 960;
-            presenter.PreferredMinimumHeight = 620;
+            presenter.PreferredMinimumWidth = 1040;
+            presenter.PreferredMinimumHeight = 660;
         }
     }
 
@@ -51,36 +53,19 @@ public sealed partial class MainWindow : Window
             picker.FileTypeFilter.Add(extension);
         }
 
-        var file = await picker.PickSingleFileAsync();
-        if (file is not null)
+        var files = await picker.PickMultipleFilesAsync();
+        if (files is { Count: > 0 })
         {
-            await ViewModel.LoadVideoCommand.ExecuteAsync(file.Path);
-        }
-    }
-
-    private async void BrowseOutputButton_Click(object sender, RoutedEventArgs e)
-    {
-        var picker = new FileSavePicker
-        {
-            SuggestedStartLocation = PickerLocationId.VideosLibrary,
-            SuggestedFileName = System.IO.Path.GetFileName(ViewModel.OutputPath),
-        };
-        InitializePickerWithWindow(picker);
-        picker.FileTypeChoices.Add("转换输出", new List<string> { ViewModel.SelectedPreset.Extension });
-
-        var file = await picker.PickSaveFileAsync();
-        if (file is not null)
-        {
-            ViewModel.OutputPath = file.Path;
+            await ViewModel.LoadVideosCommand.ExecuteAsync(files.Select(f => f.Path).ToList());
         }
     }
 
     private void Root_DragOver(object sender, DragEventArgs e)
     {
         e.AcceptedOperation = DataPackageOperation.Copy;
-        e.DragUIOverride.Caption = "释放以加载视频";
+        e.DragUIOverride.Caption = "释放以加入队列";
         e.Handled = true;
-        DropZone.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AccentFillColorDefaultBrush"];
+        DropZone.BorderBrush = (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"];
     }
 
     private void Root_DragLeave(object sender, DragEventArgs e)
@@ -99,18 +84,28 @@ public sealed partial class MainWindow : Window
         }
 
         var items = await e.DataView.GetStorageItemsAsync();
-        var file = items.OfType<StorageFile>()
-            .FirstOrDefault(item => VideoExtensions.Contains(
-                System.IO.Path.GetExtension(item.Path), StringComparer.OrdinalIgnoreCase));
+        var paths = items.OfType<StorageFile>()
+            .Where(item => VideoExtensions.Contains(
+                System.IO.Path.GetExtension(item.Path), StringComparer.OrdinalIgnoreCase))
+            .Select(item => item.Path)
+            .ToList();
 
-        if (file is not null)
+        if (paths.Count > 0)
         {
-            await ViewModel.LoadVideoCommand.ExecuteAsync(file.Path);
+            await ViewModel.LoadVideosCommand.ExecuteAsync(paths);
+        }
+    }
+
+    private void RevealOutputButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: Core.Models.QueueItem item })
+        {
+            ViewModel.RevealOutputFor(item);
         }
     }
 
     private void ResetDropZoneAppearance() =>
-        DropZone.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
+        DropZone.BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
 
     private static void InitializePickerWithWindow(object picker) =>
         InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.MainWindow));

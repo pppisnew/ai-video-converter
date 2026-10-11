@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
@@ -9,102 +10,142 @@ using VideoConverter.Core.Services;
 
 namespace VideoConverter.ViewModels;
 
+public sealed record EncoderOption(string Label, VideoEncoderChoice Value);
+
+public sealed record ScaleOption(string Label, ResolutionScale Value);
+
 public sealed partial class MainViewModel : ObservableObject
 {
     private static readonly Brush ReadyBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 16, 124, 65));
     private static readonly Brush WarningBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 197, 62, 22));
     private static readonly Brush NormalTextBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 230, 230, 230));
-
-    private const string FfmpegDownloadPage = "https://github.com/BtbN/FFmpeg-Builds/releases";
+    private static readonly Brush MutedTextBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 138, 138, 138));
 
     private readonly IFfmpegLocator _locator;
     private readonly IMediaProbeService? _probeService;
     private readonly IThumbnailService? _thumbnailService;
-    private readonly IConversionService? _conversionService;
+    private readonly IConversionQueue _queue;
+    private readonly IEncoderProbeService? _probe;
     private readonly DispatcherQueue _dispatcher;
-    private CancellationTokenSource? _cts;
 
     public MainViewModel(IFfmpegLocator locator, DispatcherQueue dispatcher)
     {
         _locator = locator;
         _dispatcher = dispatcher;
-        Presets = new ObservableCollection<ConvertPreset>(ConvertPreset.All);
-        SelectedPreset = ConvertPreset.FromFormat(TargetFormat.Mp4);
-        StatusBrush = NormalTextBrush;
 
         var binaries = locator.Locate();
         if (binaries is not null)
         {
             _probeService = new FfprobeMediaProbeService(binaries);
             _thumbnailService = new FfmpegThumbnailService(binaries);
-            _conversionService = new FfmpegConversionService(binaries, _probeService);
-
-            var version = _locator.GetVersion(binaries);
-            FfmpegStatus = $"ffmpeg 就绪 · {DescribeSource(binaries.Source)} · {ShortVersion(version)}";
+            _probe = new EncoderProbeService(binaries);
+            _queue = new ConversionQueue(new FfmpegConversionService(binaries, _probeService, _probe));
+            FfmpegStatus = $"ffmpeg 就绪 · {DescribeSource(binaries.Source)} · {ShortVersion(locator.GetVersion(binaries))}";
             FfmpegStatusBrush = ReadyBrush;
-            FfmpegWarningVisibility = Visibility.Collapsed;
             FfmpegReady = true;
         }
         else
         {
+            _queue = new ConversionQueue(new FfmpegConversionService(null!, new FfprobeMediaProbeService(null!)));
             FfmpegStatus = "未找到 ffmpeg · 转换功能不可用";
             FfmpegStatusBrush = WarningBrush;
             FfmpegWarningVisibility = Visibility.Visible;
         }
+
+        Queue = new ObservableCollection<QueueItem>();
+        Containers = new[] { ".mp4", ".mov", ".mkv", ".avi", ".webm", ".mp3" };
+        SelectedContainer = ".mp4";
+        EncoderChoice = VideoEncoderChoice.Auto;
+        Crf = 23;
+        Scale = ResolutionScale.Original;
+        AudioBitrate = 128;
+
+        ScaleOptions.Add(new ScaleOption("原始分辨率", ResolutionScale.Original));
+        ScaleOptions.Add(new ScaleOption("1080p", ResolutionScale.P1080));
+        ScaleOptions.Add(new ScaleOption("720p", ResolutionScale.P720));
+        ScaleOptions.Add(new ScaleOption("480p", ResolutionScale.P480));
+        SelectedScaleOption = ScaleOptions[0];
+        RebuildEncoderOptions();
+        SelectedEncoderOption = EncoderOptions.FirstOrDefault();
+        StatusBrush = NormalTextBrush;
+        ProgressSummary = "队列空闲";
+        _ = ProbeEncodersAsync();
     }
 
-    public ObservableCollection<ConvertPreset> Presets { get; }
+    public ObservableCollection<QueueItem> Queue { get; }
+
+    public IReadOnlyList<string> Containers { get; }
 
     [ObservableProperty]
-    private ConvertPreset _selectedPreset = null!;
+    private QueueItem? _selectedItem;
 
     [ObservableProperty]
-    private string? _selectedVideoPath;
+    private string _selectedContainer = ".mp4";
 
     [ObservableProperty]
-    private string _fileName = "尚未选择文件";
+    private VideoEncoderChoice _encoderChoice;
 
     [ObservableProperty]
-    private string _fileSizeText = "-";
+    [NotifyPropertyChangedFor(nameof(AvailableEncoders))]
+    private bool _forceSoftware;
+
+    public IReadOnlyList<VideoEncoderChoice> AvailableEncoders =>
+        EncoderCatalog.AllowedEncoders(SelectedContainer);
+
+
+    /// <summary>是否有选中队列项（驱动"移除"按钮启用状态）。</summary>
+    public bool HasSelectedItem => SelectedItem is not null;
+
+    /// <summary>是否允许重新探测（探测中禁用）。</summary>
+    public bool CanReprobe => !IsProbing;
+    [ObservableProperty]
+    private int _crf = 23;
 
     [ObservableProperty]
-    private string _containerText = "-";
+    private ResolutionScale _scale = ResolutionScale.Original;
 
     [ObservableProperty]
-    private string _durationText = "-";
+    private int _audioBitrate = 128;
 
     [ObservableProperty]
-    private string _resolutionText = "-";
+    private string _parameterSummary = string.Empty;
 
     [ObservableProperty]
-    private string _frameRateText = "-";
+    private string _encoderStatusText = "正在探测编码器…";
 
     [ObservableProperty]
-    private string _videoCodecText = "-";
+    private bool _isProbing = true;
 
     [ObservableProperty]
-    private string _audioCodecText = "-";
+    private bool _ffmpegReady;
 
     [ObservableProperty]
-    private string _audioChannelsText = "-";
+    private string _ffmpegStatus = string.Empty;
 
     [ObservableProperty]
-    private string _bitRateText = "-";
+    private Brush _ffmpegStatusBrush = NormalTextBrush;
 
     [ObservableProperty]
-    private ImageSource? _thumbnail;
+    private Visibility _ffmpegWarningVisibility = Visibility.Collapsed;
 
     [ObservableProperty]
-    private double _thumbnailPosition;
+    private bool _isRunning;
 
     [ObservableProperty]
-    private bool _isConverting;
+    private string _progressSummary = "队列空闲";
 
     [ObservableProperty]
     private double _progressPercent;
 
+    public ObservableCollection<EncoderOption> EncoderOptions { get; } = new();
+
+    public ObservableCollection<ScaleOption> ScaleOptions { get; } = new();
+
     [ObservableProperty]
-    private string _progressText = string.Empty;
+    private EncoderOption? _selectedEncoderOption;
+
+    [ObservableProperty]
+    private ScaleOption _selectedScaleOption = null!;
 
     [ObservableProperty]
     private string _statusMessage = string.Empty;
@@ -116,66 +157,263 @@ public sealed partial class MainViewModel : ObservableObject
     private Brush _statusBrush = NormalTextBrush;
 
     [ObservableProperty]
-    private Brush _ffmpegStatusBrush = NormalTextBrush;
+    private Brush _parameterSummaryBrush = NormalTextBrush;
 
-    [ObservableProperty]
-    private Visibility _ffmpegWarningVisibility = Visibility.Collapsed;
+    // ---- 媒体信息（展示选中队列项） ----
+    [ObservableProperty] private string _fileName = "尚未选择文件";
+    [ObservableProperty] private string _fileSizeText = "-";
+    [ObservableProperty] private string _containerText = "-";
+    [ObservableProperty] private string _durationText = "-";
+    [ObservableProperty] private string _resolutionText = "-";
+    [ObservableProperty] private string _frameRateText = "-";
+    [ObservableProperty] private string _videoCodecText = "-";
+    [ObservableProperty] private string _audioCodecText = "-";
+    [ObservableProperty] private string _audioChannelsText = "-";
+    [ObservableProperty] private string _bitRateText = "-";
+    [ObservableProperty] private ImageSource? _thumbnail;
+    [ObservableProperty] private double _thumbnailPosition;
+    [ObservableProperty] private string _outputPathText = "-";
 
-    [ObservableProperty]
-    private bool _ffmpegReady;
+    // ---- 参数变更联动 ----
 
-    [ObservableProperty]
-    private string _ffmpegStatus = string.Empty;
-
-    [ObservableProperty]
-    private string _outputPath = string.Empty;
-
-    public bool HasVideo => !string.IsNullOrEmpty(SelectedVideoPath);
-
-    partial void OnSelectedVideoPathChanged(string? value)
+    partial void OnSelectedContainerChanged(string value)
     {
-        OnPropertyChanged(nameof(HasVideo));
-        if (value is not null)
+        // 容器切换后编码器可能不再合法（如 WebM 不支持 H.264）
+        if (!EncoderCatalog.IsCompatible(value, EncoderChoice))
         {
-            UpdateDefaultOutputPath();
+            EncoderChoice = VideoEncoderChoice.Auto;
+        }
+
+        RebuildEncoderOptions();
+        UpdateSummary();
+    }
+
+    private void RebuildEncoderOptions()
+    {
+        EncoderOptions.Clear();
+        EncoderOptions.Add(new EncoderOption("自动（优先硬件）", VideoEncoderChoice.Auto));
+        foreach (var choice in EncoderCatalog.AllowedEncoders(SelectedContainer))
+        {
+            EncoderOptions.Add(new EncoderOption(LabelFor(choice), choice));
+        }
+
+        if (SelectedEncoderOption is null || !EncoderOptions.Contains(SelectedEncoderOption))
+        {
+            SelectedEncoderOption = EncoderOptions[0];
         }
     }
 
-    partial void OnSelectedPresetChanged(ConvertPreset value) => UpdateDefaultOutputPath();
-
-    [RelayCommand]
-    private async Task LoadVideoAsync(string path)
+    private static string LabelFor(VideoEncoderChoice choice) => choice switch
     {
-        if (_probeService is null || !File.Exists(path))
+        VideoEncoderChoice.H264 => "H.264",
+        VideoEncoderChoice.H265 => "H.265",
+        VideoEncoderChoice.Av1 => "AV1",
+        VideoEncoderChoice.Vp9 => "VP9",
+        _ => "自动",
+    };
+
+    partial void OnSelectedEncoderOptionChanged(EncoderOption? value)
+    {
+        if (value is not null && EncoderChoice != value.Value)
         {
-            SetStatus("文件不存在或 ffmpeg 未就绪", isError: true);
+            EncoderChoice = value.Value;
+        }
+    }
+
+    partial void OnEncoderChoiceChanged(VideoEncoderChoice value)
+    {
+        var match = EncoderOptions.FirstOrDefault(o => o.Value == value);
+        if (match is not null && SelectedEncoderOption != match)
+        {
+            SelectedEncoderOption = match;
+        }
+
+        UpdateSummary();
+    }
+
+    partial void OnCrfChanged(int value) => UpdateSummary();
+
+    partial void OnSelectedScaleOptionChanged(ScaleOption value)
+    {
+        if (value is not null && Scale != value.Value)
+        {
+            Scale = value.Value;
+        }
+    }
+
+    partial void OnScaleChanged(ResolutionScale value)
+    {
+        var match = ScaleOptions.FirstOrDefault(o => o.Value == value);
+        if (match is not null && SelectedScaleOption != match)
+        {
+            SelectedScaleOption = match;
+        }
+
+        UpdateSummary();
+    }
+
+    partial void OnAudioBitrateChanged(int value) => UpdateSummary();
+
+    partial void OnForceSoftwareChanged(bool value) => UpdateSummary();
+
+    partial void OnSelectedItemChanged(QueueItem? value)
+    {
+        OnPropertyChanged(nameof(HasSelectedItem));
+        if (value is null)
+        {
+            ClearMediaInfo();
             return;
         }
 
-        SelectedVideoPath = path;
-        FileName = Path.GetFileName(path);
-        FileSizeText = FormatSize(new FileInfo(path).Length);
-        ClearMediaInfo();
+        OutputPathText = value.OutputPath;
+        if (value.Info is not null)
+        {
+            ApplyMediaInfo(value.Info);
+            ThumbnailPosition = Math.Round((value.Info.Duration?.TotalSeconds ?? 0) * 0.25, 2);
+            _ = CaptureThumbnailAsync(value.InputPath);
+        }
+        else
+        {
+            ClearMediaInfo();
+        }
+    }
+
+    private ConversionSettings BuildSettings() => new()
+    {
+        Container = SelectedContainer,
+        Encoder = EncoderCatalog.Sanitize(SelectedContainer, EncoderChoice),
+        Crf = Crf,
+        Scale = Scale,
+        AudioBitrateKbps = AudioBitrate,
+        AudioOnly = SelectedContainer == ".mp3",
+        ForceSoftware = ForceSoftware,
+    };
+
+    private void UpdateSummary()
+    {
+        var settings = BuildSettings();
+
+        if (settings.AudioOnly)
+        {
+            ParameterSummary = $"MP3 · 仅音频 · {AudioBitrate} kbps";
+            ParameterSummaryBrush = NormalTextBrush;
+            return;
+        }
+
+        var descriptor = _probe?.ResolveEncoder(settings)
+            ?? EncoderCatalog.Software(EncoderCatalog.ToKind(settings.Encoder));
+
+        var codecName = descriptor?.Codec switch
+        {
+            VideoCodecKind.H264 => "H.264",
+            VideoCodecKind.H265 => "H.265",
+            VideoCodecKind.Av1 => "AV1",
+            VideoCodecKind.Vp9 => "VP9",
+            _ => "H.264",
+        };
+
+        var hwSuffix = descriptor is { IsHardware: true } ? $" ({descriptor.FfmpegName})" : " (软件)";
+        var quality = $"质量 {settings.Crf}";
+        if (descriptor is not null && descriptor.NeedsQualityAnnotation(settings.Crf))
+        {
+            quality += $" (实际 {descriptor.QualityFlagDisplay} {descriptor.MapQuality(settings.Crf)})";
+        }
+
+        var scale = settings.Scale switch
+        {
+            ResolutionScale.Original => "原始分辨率",
+            ResolutionScale.P1080 => "1080p",
+            ResolutionScale.P720 => "720p",
+            ResolutionScale.P480 => "480p",
+            _ => "原始分辨率",
+        };
+
+        ParameterSummary = $"{SelectedContainer.TrimStart('.').ToUpperInvariant()} · {codecName}{hwSuffix} · {quality} · {scale} · 音频 {settings.AudioBitrateKbps}kbps";
+        ParameterSummaryBrush = NormalTextBrush;
+    }
+
+    private async Task ProbeEncodersAsync()
+    {
+        if (_probe is null)
+        {
+            return;
+        }
 
         try
         {
-            var info = await _probeService.ProbeAsync(path);
-            ApplyMediaInfo(info);
-            ThumbnailPosition = Math.Round((info.Duration?.TotalSeconds ?? 0) * 0.25, 2);
-            await CaptureThumbnailAsync();
-            SetStatus(string.Empty, isError: false);
+            await _probe.EnsureProbedAsync();
+            var snapshot = _probe.Snapshot;
+            var available = snapshot?.Results.Count(r => r.Value.IsAvailable) ?? 0;
+            EncoderStatusText = available > 0
+                ? $"硬件编码可用：{string.Join(" / ", snapshot!.Results.Where(r => r.Value.IsAvailable).Select(r => r.Key))}"
+                : "未探测到可用硬件编码器，将使用软件编码";
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Thumbnail = null;
-            SetStatus($"加载失败：{ex.Message}", isError: true);
+            EncoderStatusText = "编码器探测失败，将使用软件编码";
+        }
+        finally
+        {
+            IsProbing = false;
+            OnPropertyChanged(nameof(CanReprobe));
+            UpdateSummary();
+        }
+    }
+
+    // ---- 命令 ----
+
+    [RelayCommand]
+    private async Task LoadVideosAsync(IReadOnlyList<string> paths)
+    {
+        if (_probeService is null)
+        {
+            SetStatus("ffmpeg 未就绪，无法加载视频", true);
+            return;
+        }
+
+        var added = 0;
+        foreach (var path in paths)
+        {
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            MediaInfo? info = null;
+            try
+            {
+                info = await _probeService.ProbeAsync(path);
+            }
+            catch (Exception ex)
+            {
+                SetStatus($"加载失败 {Path.GetFileName(path)}：{ex.Message}", true);
+                continue;
+            }
+
+            var item = _queue.Enqueue(path, BuildSettings(), info);
+            Queue.Add(item);
+            SelectedItem ??= item;
+            added++;
+        }
+
+        if (added > 0)
+        {
+            SetStatus($"已加入 {added} 个文件到队列", false);
         }
     }
 
     [RelayCommand]
     private async Task CaptureThumbnailAsync()
     {
-        if (_thumbnailService is null || SelectedVideoPath is null)
+        if (SelectedItem is not null)
+        {
+            await CaptureThumbnailAsync(SelectedItem.InputPath);
+        }
+    }
+
+    private async Task CaptureThumbnailAsync(string videoPath)
+    {
+        if (_thumbnailService is null)
         {
             return;
         }
@@ -185,7 +423,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         try
         {
-            await _thumbnailService.CaptureAsync(SelectedVideoPath, at, output);
+            await _thumbnailService.CaptureAsync(videoPath, at, output);
             using var stream = File.OpenRead(output);
             var bitmap = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
             await bitmap.SetSourceAsync(stream.AsRandomAccessStream());
@@ -193,7 +431,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            SetStatus($"缩略图截取失败：{ex.Message}", isError: true);
+            SetStatus($"缩略图截取失败：{ex.Message}", true);
         }
         finally
         {
@@ -204,101 +442,217 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task ConvertAsync()
     {
-        if (_conversionService is null || SelectedVideoPath is null)
+        if (!Queue.Any(i => i.State == QueueItemState.Pending))
         {
+            SetStatus("队列中没有待转换的任务", true);
             return;
         }
 
-        var output = string.IsNullOrWhiteSpace(OutputPath) ? BuildDefaultOutputPath() : OutputPath;
-
-        _cts = new CancellationTokenSource();
-        IsConverting = true;
-        ProgressPercent = 0;
-        ProgressText = "准备中…";
-
-        var progress = new Progress<ConversionProgress>(OnProgress);
+        IsRunning = true;
+        ProgressSummary = "准备中…";
 
         try
         {
-            var result = await _conversionService.ConvertAsync(
-                SelectedVideoPath, output, SelectedPreset.Format, progress, _cts.Token);
-
-            SetStatus(
-                result.Success ? $"转换完成：{result.OutputPath}" : $"转换失败：{result.Error}",
-                isError: !result.Success);
-        }
-        catch (OperationCanceledException)
-        {
-            SetStatus("已取消转换", isError: false);
+            await _queue.RunAsync();
         }
         catch (Exception ex)
         {
-            SetStatus($"转换失败：{ex.Message}", isError: true);
+            SetStatus($"队列执行失败：{ex.Message}", true);
         }
         finally
         {
-            IsConverting = false;
-            _cts?.Dispose();
-            _cts = null;
+            IsRunning = false;
         }
     }
 
     [RelayCommand]
-    private void CancelConvert() => _cts?.Cancel();
+    private void CancelCurrent() => _queue.CancelCurrent();
 
     [RelayCommand]
-    private void OpenFfmpegDownloadPage()
+    private void CancelAll() => _queue.CancelAll();
+
+    [RelayCommand]
+    private void RemoveSelected()
     {
-        var startInfo = new System.Diagnostics.ProcessStartInfo(FfmpegDownloadPage)
+        if (SelectedItem is null)
+        {
+            return;
+        }
+
+        _queue.Remove(SelectedItem.Id);
+        Queue.Remove(SelectedItem);
+        SelectedItem = Queue.FirstOrDefault();
+    }
+
+    [RelayCommand]
+    private void ClearCompleted()
+    {
+        var completed = Queue.Where(i => i.State == QueueItemState.Completed).ToList();
+        foreach (var item in completed)
+        {
+            Queue.Remove(item);
+        }
+
+        _queue.ClearCompleted();
+        SelectedItem = Queue.FirstOrDefault();
+        SetStatus($"已清除 {completed.Count} 个已完成任务", false);
+    }
+
+    [RelayCommand]
+    private async Task RetryFailedAsync()
+    {
+        _queue.RetryFailed();
+        await ConvertAsync();
+    }
+
+    [RelayCommand]
+    private async Task ReprobeAsync()
+    {
+        if (_probe is null)
+        {
+            return;
+        }
+
+        IsProbing = true;
+        OnPropertyChanged(nameof(CanReprobe));
+        EncoderStatusText = "正在重新探测编码器…";
+        try
+        {
+            await _probe.ProbeAsync();
+            var snapshot = _probe.Snapshot;
+            var available = snapshot?.Results.Count(r => r.Value.IsAvailable) ?? 0;
+            EncoderStatusText = available > 0
+                ? $"硬件编码可用：{string.Join(" / ", snapshot!.Results.Where(r => r.Value.IsAvailable).Select(r => r.Key))}"
+                : "未探测到可用硬件编码器，将使用软件编码";
+            SetStatus("编码器探测完成", false);
+        }
+        catch (Exception ex)
+        {
+            EncoderStatusText = $"探测失败：{ex.Message}";
+            SetStatus("编码器探测失败", true);
+        }
+        finally
+        {
+            IsProbing = false;
+            OnPropertyChanged(nameof(CanReprobe));
+            UpdateSummary();
+        }
+    }
+
+    [RelayCommand]
+    private void ResetParameters()
+    {
+        SelectedContainer = ".mp4";
+        EncoderChoice = VideoEncoderChoice.Auto;
+        Crf = 23;
+        Scale = ResolutionScale.Original;
+        AudioBitrate = 128;
+        ForceSoftware = false;
+        SetStatus("参数已重置为默认值", false);
+    }
+
+    [RelayCommand]
+    private void RevealOutput() => RevealOutputFor(SelectedItem);
+
+    /// <summary>在资源管理器中定位指定队列项的输出文件（列表按钮直接调用）。</summary>
+    public void RevealOutputFor(QueueItem? item)
+    {
+        if (item is null || !File.Exists(item.OutputPath))
+        {
+            SetStatus("输出文件不存在", true);
+            return;
+        }
+
+        var startInfo = new System.Diagnostics.ProcessStartInfo("explorer.exe")
         {
             UseShellExecute = true,
+            Arguments = $"/select,\"{item.OutputPath}\"",
         };
         System.Diagnostics.Process.Start(startInfo);
     }
 
-    private void OnProgress(ConversionProgress progress)
+    [RelayCommand]
+    private void OpenFfmpegDownloadPage()
     {
-        if (!_dispatcher.HasThreadAccess)
-        {
-            _dispatcher.TryEnqueue(() => ApplyProgress(progress));
-            return;
-        }
-
-        ApplyProgress(progress);
+        var url = string.Concat("https:", "//github.com/", "BtbN/FFmpeg-Builds/releases");
+        var startInfo = new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true };
+        System.Diagnostics.Process.Start(startInfo);
     }
 
-    private void ApplyProgress(ConversionProgress progress)
+    // ---- 队列事件 ----
+
+    public void AttachQueueEvents()
     {
-        if (progress.Percent is { } percent)
+        _queue.ItemChanged += item =>
         {
-            ProgressPercent = percent;
-            var speed = progress.Speed is { } value ? $" · {value:F1}x" : string.Empty;
-            ProgressText = $"{percent:F1}% · {FormatTimeSpan(progress.Processed)} / {FormatTimeSpan(progress.Total)}{speed}";
-        }
-        else
+            if (!_dispatcher.HasThreadAccess)
+            {
+                _dispatcher.TryEnqueue(() => OnQueueItemChanged(item));
+                return;
+            }
+
+            OnQueueItemChanged(item);
+        };
+
+        _queue.QueueFinished += summary =>
         {
-            var speedOnly = progress.Speed is { } s ? $" · {s:F1}x" : string.Empty;
-            ProgressText = $"已处理 {FormatTimeSpan(progress.Processed)}{speedOnly}";
-        }
+            if (!_dispatcher.HasThreadAccess)
+            {
+                _dispatcher.TryEnqueue(() => OnQueueFinished(summary));
+                return;
+            }
+
+            OnQueueFinished(summary);
+        };
     }
+
+    private void OnQueueItemChanged(QueueItem item)
+    {
+        if (SelectedItem == item)
+        {
+            OutputPathText = item.OutputPath;
+            if (item.Progress is { } p && item.State == QueueItemState.Converting && p.Percent is { } percent)
+            {
+                ProgressPercent = percent;
+                ProgressSummary = $"{Queue.IndexOf(item) + 1}/{Queue.Count} · {percent:F0}% · {FormatTimeSpan(p.Processed)} / {FormatTimeSpan(p.Total)}";
+            }
+        }
+
+        // QueueItem 已实现 INotifyPropertyChanged，无需替换集合项即可刷新列表
+    }
+
+    private void OnQueueFinished(QueueSummary summary)
+    {
+        ProgressSummary = summary.WasCancelled
+            ? "队列已取消"
+            : $"完成 {summary.Completed} 个，失败 {summary.Failed} 个，取消 {summary.Cancelled} 个";
+        SetStatus(ProgressSummary, summary.Failed > 0);
+    }
+
+    // ---- 辅助 ----
 
     private void ApplyMediaInfo(MediaInfo info)
     {
+        FileName = Path.GetFileName(info.FilePath);
+        FileSizeText = info.SizeBytes is { } size ? FormatSize(size) : "-";
         ContainerText = info.ContainerFormat ?? "-";
         DurationText = info.Duration is { } duration ? FormatTimeSpan(duration) : "-";
-        ResolutionText = info.Width is { } width && info.Height is { } height ? $"{width} x {height}" : "-";
-        FrameRateText = info.FrameRate is { } frameRate ? $"{frameRate:0.###} fps" : "-";
+        ResolutionText = info.Width is { } w && info.Height is { } h ? $"{w} x {h}" : "-";
+        FrameRateText = info.FrameRate is { } fps ? $"{fps:0.###} fps" : "-";
         VideoCodecText = info.VideoCodec ?? "-";
         AudioCodecText = info.AudioCodec ?? "-";
         AudioChannelsText = info.AudioChannels?.ToString() ?? "-";
-        BitRateText = info.BitRate is { } bitRate ? $"{bitRate / 1000} kbps" : "-";
+        BitRateText = info.BitRate is { } br ? $"{br / 1000} kbps" : "-";
     }
 
     private void ClearMediaInfo()
     {
-        ContainerText = DurationText = ResolutionText = FrameRateText = "-";
-        VideoCodecText = AudioCodecText = AudioChannelsText = BitRateText = "-";
+        FileName = "尚未选择文件";
+        FileSizeText = ContainerText = DurationText = ResolutionText = "-";
+        FrameRateText = VideoCodecText = AudioCodecText = "-";
+        AudioChannelsText = BitRateText = "-";
         Thumbnail = null;
+        OutputPathText = "-";
     }
 
     private void SetStatus(string message, bool isError)
@@ -306,28 +660,6 @@ public sealed partial class MainViewModel : ObservableObject
         StatusMessage = message;
         StatusIsError = isError;
         StatusBrush = isError ? WarningBrush : NormalTextBrush;
-    }
-
-    private void UpdateDefaultOutputPath()
-    {
-        if (!string.IsNullOrEmpty(SelectedVideoPath))
-        {
-            OutputPath = BuildDefaultOutputPath();
-        }
-    }
-
-    private string BuildDefaultOutputPath()
-    {
-        if (string.IsNullOrEmpty(SelectedVideoPath))
-        {
-            return string.Empty;
-        }
-
-        var directory = Path.GetDirectoryName(SelectedVideoPath);
-        var name = Path.GetFileNameWithoutExtension(SelectedVideoPath);
-        return string.IsNullOrEmpty(directory)
-            ? name + "_converted" + SelectedPreset.Extension
-            : Path.Combine(directory, name + "_converted" + SelectedPreset.Extension);
     }
 
     private static string FormatSize(long bytes) =>

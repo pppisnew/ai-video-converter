@@ -1,12 +1,17 @@
 <Application
     x:Class="VideoConverter.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:helpers="using:VideoConverter.Helpers">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+            <helpers:NotNullToBooleanConverter x:Key="NotNullToBoolean" />
+            <helpers:InverseBoolToBooleanConverter x:Key="InverseBoolToBoolean" />
+            <helpers:QueueStateToGlyphConverter x:Key="StateToGlyph" />
+            <helpers:QueueStateToBrushConverter x:Key="StateToBrush" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>
