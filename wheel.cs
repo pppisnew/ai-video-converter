@@ -1,6 +1,0 @@
-using System;
-using System.Runtime.InteropServices;
-public class Wheel {
-  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
-  [DllImport("user32.dll")] public static extern void mouse_event(uint f, int dx, int dy, uint d, int e);
-}
