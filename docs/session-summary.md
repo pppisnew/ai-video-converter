@@ -253,3 +253,23 @@ ffmpeg 直接报 "Only VP8 or VP9 or AV1 video ... supported for WebM"。
 回归测试：`ResolveEncoder_AutoForWebM_NeverReturnsSoftwareH264`、
 `ConvertAsync_AutoEncoder_ProducesPlayableOutput`(mp4/mkv/webm)、去重、取消语义、参数更新。
 共 138 个测试全绿。GUI 实测：WebM+Auto → VP9（软件），非法组合自动纠正。
+
+### 队列管理重构（2026-10-11 第四轮）
+
+参考 TransCoda4Windows（WinUI 3 同栈）、ffmpeg_batch、HandBrake 的队列设计后重构：
+
+**1. 修复"运行中勾选会被卷入当前批次"** → `RunAsync` 在**启动时快照批次**，
+运行中途勾选的新项要等下一次开始转换才会被处理。回归测试：
+`RunAsync_CheckingAnItemMidRun_DoesNotJoinTheCurrentBatch`。
+
+**2. 参数改为"任务开始时捕获"（TransCoda 模式）** → 原来入队时捕获，
+用户改面板对已入队项无效，是之前 H.265/AV1/VP9 失败的间接原因。
+现在 `SettingsProvider` 在每个任务开始前取当前面板值，未跑的任务自动用新参数。
+
+**3. 新增全局输出目录** → 留空 = 与源文件同目录（TransCoda 同款），
+可浏览选择；变更会重算所有待转换项的输出路径。
+
+**4. 去重提示** → 全部是重复文件时也给出反馈（原来 added=0 时提示被吞）。
+
+队列行已显示每项目标格式（如 MKV · H.265）和实时进度。
+142 个测试全绿。

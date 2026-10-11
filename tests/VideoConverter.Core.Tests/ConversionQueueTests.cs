@@ -535,3 +535,99 @@ public class ConversionQueueDuplicateTests
         Assert.EndsWith(".mkv", item.OutputPath);
     }
 }
+
+public class ConversionQueueBatchTests
+{
+    private static ConversionSettings Settings() => ConversionSettingsPresets.New(".mp4");
+
+    private static string TempInput(string name)
+    {
+        var path = Path.Combine(Path.GetTempPath(), "vc-batch-" + Guid.NewGuid().ToString("N"), name);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "x");
+        return path;
+    }
+
+    [Fact]
+    public async Task RunAsync_CheckingAnItemMidRun_DoesNotJoinTheCurrentBatch()
+    {
+        // Regression: the queue used to read IsSelected live, so ticking a checkbox while a
+        // conversion was running silently added that file to the batch in progress.
+        var firstSeen = new TaskCompletionSource();
+        var service = new FakeConversionService(_ => ConversionResult.Ok("out", "libx264"), _ => firstSeen.TrySetResult());
+        var queue = new ConversionQueue(service);
+        var a = queue.Enqueue(TempInput("a.mp4"), Settings());
+        var b = queue.Enqueue(TempInput("b.mp4"), Settings());
+        b.IsSelected = false;
+
+        var run = queue.RunAsync();
+        await firstSeen.Task;
+        b.IsSelected = true;   // user ticks it while a is still converting
+        await run;
+
+        Assert.Single(service.ConvertedInputs);
+        Assert.Equal(a.InputPath, service.ConvertedInputs[0]);
+        Assert.Equal(QueueItemState.Pending, b.State);
+    }
+
+    [Fact]
+    public async Task RunAsync_UsesLiveSettingsFromProvider()
+    {
+        // Settings are captured when the job starts, not when it is enqueued, so panel
+        // tweaks always apply to jobs that have not run yet.
+        var seen = new List<ConversionSettings>();
+        var service = new CapturingSettingsService(seen);
+        var queue = new ConversionQueue(service)
+        {
+            SettingsProvider = () => ConversionSettingsPresets.New(".mkv") with { Encoder = VideoEncoderChoice.H265 },
+        };
+        queue.Enqueue(TempInput("a.mp4"), Settings());
+
+        await queue.RunAsync();
+
+        Assert.Single(seen);
+        Assert.Equal(".mkv", seen[0].Container);
+        Assert.Equal(VideoEncoderChoice.H265, seen[0].Encoder);
+        Assert.EndsWith(".mkv", queue.Items[0].OutputPath);
+    }
+
+    [Fact]
+    public void ResolveOutputPathFor_HonoursGlobalOutputDirectory()
+    {
+        var queue = new ConversionQueue(new FakeConversionService(_ => ConversionResult.Ok("out")))
+        {
+            OutputDirectory = @"C:\Temp\vc-out",
+        };
+        var input = TempInput("clip.mp4");
+
+        var output = queue.ResolveOutputPathFor(input, Settings());
+
+        Assert.StartsWith(@"C:\Temp\vc-out", output);
+        Assert.EndsWith("clip_converted.mp4", output);
+    }
+
+    [Fact]
+    public void ResolveOutputPathFor_NullOutputDirectory_UsesSourceFolder()
+    {
+        var queue = new ConversionQueue(new FakeConversionService(_ => ConversionResult.Ok("out")));
+        var input = TempInput("clip.mp4");
+
+        var output = queue.ResolveOutputPathFor(input, Settings());
+
+        Assert.Equal(Path.GetDirectoryName(input), Path.GetDirectoryName(output));
+    }
+
+    private sealed class CapturingSettingsService(List<ConversionSettings> seen) : IConversionService
+    {
+        public Task<ConversionResult> ConvertAsync(
+            string inputPath,
+            string outputPath,
+            ConversionSettings settings,
+            IProgress<ConversionProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            seen.Add(settings);
+            return Task.FromResult(ConversionResult.Ok(outputPath, "libx264"));
+        }
+    }
+}

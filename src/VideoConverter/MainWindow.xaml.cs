@@ -107,6 +107,6 @@ public sealed partial class MainWindow : Window
     private void ResetDropZoneAppearance() =>
         DropZone.BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
 
-    private static void InitializePickerWithWindow(object picker) =>
+    internal static void InitializePickerWithWindow(object picker) =>
         InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.MainWindow));
 }

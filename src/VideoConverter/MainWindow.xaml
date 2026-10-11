@@ -290,6 +290,20 @@
                                        SpinButtonPlacementMode="Compact" AutomationProperties.Name="音频码率" AutomationProperties.AutomationId="AudioBitrateBox" />
                         </Grid>
 
+                        <TextBlock Text="输出目录（留空 = 与源文件同目录）" FontSize="12" Opacity="0.6" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Text="{x:Bind ViewModel.OutputDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="与源文件同目录" AutomationProperties.Name="输出目录" />
+                            <Button Grid.Column="1" Command="{x:Bind ViewModel.BrowseOutputDirectoryCommand, Mode=OneWay}"
+                                    ToolTipService.ToolTip="选择输出目录" AutomationProperties.AutomationId="BrowseOutputDirButton">
+                                <FontIcon Glyph="&#xE8DA;" FontSize="14" />
+                            </Button>
+                        </Grid>
+
                         <!-- 参数摘要 -->
                         <Border Background="{ThemeResource LayerFillColorDefaultBrush}" Padding="10,8" CornerRadius="4">
                             <TextBlock Text="{x:Bind ViewModel.ParameterSummary, Mode=OneWay}" FontSize="12"

@@ -39,7 +39,10 @@ public sealed partial class MainViewModel : ObservableObject
             _probeService = new FfprobeMediaProbeService(binaries);
             _thumbnailService = new FfmpegThumbnailService(binaries);
             _probe = new EncoderProbeService(binaries);
-            _queue = new ConversionQueue(new FfmpegConversionService(binaries, _probeService, _probe));
+            _queue = new ConversionQueue(new FfmpegConversionService(binaries, _probeService, _probe))
+        {
+            SettingsProvider = BuildSettings,
+        };
             FfmpegStatus = $"ffmpeg 就绪 · {DescribeSource(binaries.Source)} · {ShortVersion(locator.GetVersion(binaries))}";
             FfmpegStatusBrush = ReadyBrush;
             FfmpegReady = true;
@@ -128,6 +131,41 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private string _parameterSummary = string.Empty;
+    /// <summary>Global output folder; empty means next to each source file.</summary>
+    [ObservableProperty]
+    private string _outputDirectory = string.Empty;
+
+    partial void OnOutputDirectoryChanged(string value)
+    {
+        _queue.OutputDirectory = string.IsNullOrWhiteSpace(value) ? null : value;
+        var settings = BuildSettings();
+        foreach (var item in Queue.Where(i => i.State == QueueItemState.Pending))
+        {
+            item.UpdateSettings(settings, _queue.ResolveOutputPathFor(item.InputPath, settings));
+            if (SelectedItem == item)
+            {
+                OutputPathText = item.OutputPath;
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task BrowseOutputDirectoryAsync()
+    {
+        var picker = new Windows.Storage.Pickers.FolderPicker
+        {
+            SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.VideosLibrary,
+        };
+        MainWindow.InitializePickerWithWindow(picker);
+        picker.FileTypeFilter.Add("*");
+
+        var folder = await picker.PickSingleFolderAsync();
+        if (folder is not null)
+        {
+            OutputDirectory = folder.Path;
+        }
+    }
+
 
     [ObservableProperty]
     private string _encoderStatusText = "正在探测编码器…";
@@ -328,7 +366,6 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void UpdateSummary()
     {
-        SyncSettingsToPendingItems();
         var settings = BuildSettings();
 
         if (settings.AudioOnly)
@@ -445,7 +482,16 @@ public sealed partial class MainViewModel : ObservableObject
         {
             AllSelected = Queue.All(i => i.IsSelected);
             OnPropertyChanged(nameof(SelectedCount));
-            SetStatus($"已加入 {added} 个文件到队列", false);
+        }
+
+        // Report even when everything was a duplicate (added == 0), otherwise the user
+        // gets no feedback at all and assumes the click did nothing.
+        if (added > 0 || skipped > 0)
+        {
+            var message = skipped > 0
+                ? $"已加入 {added} 个文件，跳过 {skipped} 个已在队列中的文件"
+                : $"已加入 {added} 个文件到队列";
+            SetStatus(message, false);
         }
     }
 

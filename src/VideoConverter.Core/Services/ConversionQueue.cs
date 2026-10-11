@@ -35,6 +35,12 @@ public interface IConversionQueue
     bool Contains(string inputPath);
 
     /// <summary>Recompute the default output path for a file under the given settings.</summary>
+
+    /// <summary>Destination folder; null saves next to each source file.</summary>
+    string? OutputDirectory { get; set; }
+
+    /// <summary>Supplies the live settings captured when each job starts.</summary>
+    Func<ConversionSettings>? SettingsProvider { get; set; }
     string ResolveOutputPathFor(string inputPath, ConversionSettings settings);
 
     int RetryFailed();
@@ -59,6 +65,16 @@ public sealed class ConversionQueue : IConversionQueue
     private readonly SemaphoreSlim _runGate = new(1, 1);
     private CancellationTokenSource? _queueCts;
     private int _cancelledCount;
+
+    /// <summary>
+    /// Supplies the live conversion settings. Parameters are captured when a job STARTS,
+    /// not when it is enqueued, so panel tweaks always apply to jobs that have not run yet
+    /// (the model used by ffmpeg_batch / TransCoda).
+    /// </summary>
+    public Func<ConversionSettings>? SettingsProvider { get; set; }
+
+    /// <summary>Destination folder; null saves next to each source file.</summary>
+    public string? OutputDirectory { get; set; }
 
     public ConversionQueue(IConversionService conversionService)
     {
@@ -188,6 +204,13 @@ public sealed class ConversionQueue : IConversionQueue
             var completed = 0;
             var failed = 0;
 
+            // Snapshot the batch when the run starts. Checking an item mid-run must not
+            // pull it into the batch that is already going - it waits for the next run.
+            var batch = _items
+                .Where(i => i.State == QueueItemState.Pending && i.IsSelected)
+                .Select(i => i.Id)
+                .ToHashSet();
+
             foreach (var item in _items)
             {
                 if (linkedCts.IsCancellationRequested)
@@ -195,11 +218,16 @@ public sealed class ConversionQueue : IConversionQueue
                     break;
                 }
 
-                // Unchecked items are skipped so the user can convert only a subset
-                if (item.State != QueueItemState.Pending || !item.IsSelected)
+                if (!batch.Contains(item.Id))
                 {
                     continue;
                 }
+
+                // Capture the live settings now that the job actually starts, so panel
+                // tweaks made while earlier jobs ran still apply to the rest of the queue.
+                var liveSettings = SettingsProvider?.Invoke() ?? item.Settings;
+                var liveOutput = ResolveOutputPath(item.InputPath, liveSettings);
+                item.UpdateSettings(liveSettings, liveOutput);
 
                 using var itemCts = CancellationTokenSource.CreateLinkedTokenSource(linkedCts.Token);
                 item.MarkConverting(itemCts);
@@ -287,7 +315,7 @@ public sealed class ConversionQueue : IConversionQueue
 
     internal string ResolveOutputPath(string inputPath, ConversionSettings settings)
     {
-        var directory = Path.GetDirectoryName(inputPath);
+        var directory = OutputDirectory ?? Path.GetDirectoryName(inputPath);
         var name = Path.GetFileNameWithoutExtension(inputPath) ?? "output";
         var extension = settings.AudioOnly ? ".mp3" : settings.Container;
 
