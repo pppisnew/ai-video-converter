@@ -294,3 +294,14 @@ ffmpeg 直接报 "Only VP8 or VP9 or AV1 video ... supported for WebM"。
 空态即默认值，标签改为独立说明行。
 
 验证：构建 0 警告 0 错误，142 测试通过，Expander 展开/收起经 UIA 自动化确认正常。
+
+### 布局自适应修复（2026-10-11）
+
+用户反馈：窗口大小变化时右侧内容被裁切，而不是自适应收缩。
+
+根因：右列 `ScrollViewer` 设置了 `HorizontalContentAlignment="Center"` 且允许横向溢出，
+窗口变窄时卡片不收缩，超出部分被裁掉。
+
+修复：禁用横向滚动（`HorizontalScrollMode="Disabled"` + `HorizontalScrollBarVisibility="Disabled"`），
+强制内容适应视口宽度；同时去掉固定 `MaxWidth=680` 限制，改为随窗口伸缩。
+已实测 1040x660 窗口下内容完整可见，无裁切。

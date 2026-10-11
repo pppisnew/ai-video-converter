@@ -130,8 +130,10 @@
                     Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
 
             <!-- 右列：文件详情 + 转换设置 + 操作 -->
-            <ScrollViewer Grid.Column="1" Padding="16" HorizontalContentAlignment="Center">
-                <StackPanel Spacing="12" MaxWidth="680">
+            <!-- 禁用横向滚动：内容必须适应视口宽度，窗口再窄也不会被裁切 -->
+            <ScrollViewer Grid.Column="1" Padding="16"
+                          HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="12">
 
                     <!-- 当前文件卡片 -->
                     <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
