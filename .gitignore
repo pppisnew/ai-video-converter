@@ -76,6 +76,14 @@ t2.ps1
 uiauto.cs
 ui-*.png
 wheel.cs
-e2e-sample.mp4*.json
-tcjob.cs
 wheel.cs
+
+fbrel.json
+fbtree.json
+rl.json
+
+e2e-sample.mp4
+tcjob.cs
+fbrel.json
+fbtree.json
+rl.json
