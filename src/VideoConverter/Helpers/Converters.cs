@@ -3,6 +3,7 @@ using Windows.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using VideoConverter.Core.Models;
 using VideoConverter.ViewModels;
 using Windows.Foundation;
@@ -126,80 +127,50 @@ public sealed class TaskFilterToChipStyleConverter : IValueConverter
         throw new NotSupportedException();
 }
 
+
 /// <summary>
-/// 缩略图占位底色：按行位置取一组柔和渐变（对应原型的 hsl 渐变）。
-/// 用行号而非文件哈希，保证同一页面内相邻两行一定不同色；
-/// ConverterParameter="task" 时按任务页筛选后的顺序取号，其余按转换页队列顺序。
+/// 缩略图缓存路径 -> BitmapImage。按路径缓存已解码的图片对象：列表滚动/虚拟化会反复
+/// 调用 Convert，每次都新建 BitmapImage 会把同一张图重复解码。
+/// 空路径、文件缺失或图片损坏一律返回 null——此时 Image 不渲染，底下的彩色占位块继续显示。
 /// </summary>
-public sealed class ThumbnailBrushConverter : IValueConverter
+public sealed class PathToImageSourceConverter : IValueConverter
 {
-    private static readonly double[] Hues = { 205, 160, 275, 25, 330, 100 };
-    private static readonly LinearGradientBrush[] Brushes = CreateBrushes();
+    // 列表行缩略图只显示 96x56 DIP；按 240 物理像素解码（高 DPI 下仍清晰）
+    // 而不是解出源视频分辨率，否则每行都是一张 1080p 位图，长队列会很吃内存。
+    private const int DecodeWidth = 240;
 
-    private static LinearGradientBrush[] CreateBrushes()
-    {
-        var brushes = new LinearGradientBrush[Hues.Length];
-        for (var i = 0; i < Hues.Length; i++)
-        {
-            var hue = Hues[i];
-            var brush = new LinearGradientBrush
-            {
-                StartPoint = new Point(0, 0),
-                EndPoint = new Point(1, 1),
-            };
-            brush.GradientStops.Add(new GradientStop { Offset = 0, Color = FromHsl(hue, 0.62, 0.46) });
-            brush.GradientStops.Add(new GradientStop { Offset = 1, Color = FromHsl((hue + 45) % 360, 0.70, 0.28) });
-            brushes[i] = brush;
-        }
-
-        return brushes;
-    }
+    private static readonly Dictionary<string, BitmapImage> Decoded = new(StringComparer.OrdinalIgnoreCase);
 
     public object Convert(object value, Type targetType, object parameter, string language)
     {
-        var index = ResolveRowIndex(value, parameter);
-        return Brushes[index % Brushes.Length];
+        if (value is not string path || string.IsNullOrWhiteSpace(path))
+        {
+            return null!;
+        }
+
+        if (Decoded.TryGetValue(path, out var cached))
+        {
+            return cached;
+        }
+
+        BitmapImage bitmap;
+        try
+        {
+            using var stream = File.OpenRead(path);
+            bitmap = new BitmapImage { DecodePixelWidth = DecodeWidth };
+            bitmap.SetSource(stream.AsRandomAccessStream());
+        }
+        catch (Exception)
+        {
+            return null!;
+        }
+
+        Decoded[path] = bitmap;
+        return bitmap;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language) =>
         throw new NotSupportedException();
-
-    /// <summary>行号来自所在列表的真实位置：转换页队列顺序 / 任务页筛选后顺序。</summary>
-    private static int ResolveRowIndex(object value, object parameter)
-    {
-        if (value is not QueueItem item)
-        {
-            return 0;
-        }
-
-        IList<QueueItem> rows = parameter is string scope && scope.Equals("task", StringComparison.OrdinalIgnoreCase)
-            ? App.ViewModel.FilteredTasks
-            : App.ViewModel.Queue;
-        var index = rows.IndexOf(item);
-        return index < 0 ? 0 : index;
-    }
-
-    private static Color FromHsl(double hue, double saturation, double lightness)
-    {
-        var c = (1 - Math.Abs(2 * lightness - 1)) * saturation;
-        var h = hue / 60.0;
-        var x = c * (1 - Math.Abs(h % 2 - 1));
-        var (r, g, b) = (int)h switch
-        {
-            0 => (c, x, 0d),
-            1 => (x, c, 0d),
-            2 => (0d, c, x),
-            3 => (0d, x, c),
-            4 => (x, 0d, c),
-            _ => (c, 0d, x),
-        };
-        var m = lightness - c / 2;
-        return Color.FromArgb(
-            255,
-            (byte)Math.Round((r + m) * 255),
-            (byte)Math.Round((g + m) * 255),
-            (byte)Math.Round((b + m) * 255));
-    }
 }
 
 /// <summary>空字符串折叠：非空内容显示，空/空白内容隐藏（时长角标等可选小标记用）。</summary>

@@ -1,7 +1,8 @@
-﻿using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using VideoConverter.Core.Models;
 using VideoConverter.ViewModels;
 using Windows.Storage;
@@ -26,6 +27,7 @@ public sealed partial class ConvertPage : Page
 
     private Brush? _restingStroke;
     private Brush? _restingFill;
+    private bool _thumbnailDialogOpen;
 
     public ConvertPage()
     {
@@ -133,6 +135,83 @@ public sealed partial class ConvertPage : Page
         if (sender is FrameworkElement { DataContext: QueueItem item })
         {
             item.ResetOverride();
+        }
+    }
+
+    /// <summary>
+    /// 点击行内小图 / 详情区大图：把同一张缓存帧放大展示（640x360，下方一行文件名）。
+    /// 只读缓存文件，不重新截帧；还没有缓存帧（ThumbnailPath 为空）或文件已被清理时什么都不做。
+    /// </summary>
+    private async void ShowThumbnailPreviewButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_thumbnailDialogOpen || sender is not FrameworkElement { DataContext: QueueItem item })
+        {
+            return;
+        }
+
+        // 缩略图是按钮，会把点击从行选中上截走；这里先补上选中，
+        // 让"点哪个文件，下方详情/预览就跟着变"成立，再打开放大视图。
+        ViewModel.SelectedItem = item;
+
+        var path = item.ThumbnailPath;
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return;
+        }
+
+        var bitmap = new BitmapImage { DecodePixelWidth = 640 };
+        try
+        {
+            using var stream = File.OpenRead(path);
+            await bitmap.SetSourceAsync(stream.AsRandomAccessStream());
+        }
+        catch (Exception)
+        {
+            // 文件被清理或损坏：静默放弃，不弹一个空白预览
+            return;
+        }
+
+        var content = new StackPanel { Spacing = 10 };
+        content.Children.Add(new Image
+        {
+            Width = 640,
+            Height = 360,
+            Stretch = Stretch.Uniform,
+            Source = bitmap,
+        });
+        content.Children.Add(new TextBlock
+        {
+            Text = item.FileName,
+            FontSize = 13,
+            MaxWidth = 640,
+            TextAlignment = TextAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+        });
+
+        var dialog = new ContentDialog
+        {
+            // WinUI 3 桌面端没有隐式窗口根，缺 XamlRoot 时 ShowAsync 直接抛异常
+            XamlRoot = XamlRoot,
+            Title = "缩略图预览",
+            CloseButtonText = "关闭",
+            DefaultButton = ContentDialogButton.Close,
+            Content = content,
+        };
+
+        // 连点会撞上「同一时间只能开一个 ContentDialog」，先挡住
+        _thumbnailDialogOpen = true;
+        try
+        {
+            await dialog.ShowAsync();
+        }
+        catch (Exception)
+        {
+            // 对话框偶尔起不来（窗口正在关闭等），不值得把应用带崩
+        }
+        finally
+        {
+            _thumbnailDialogOpen = false;
         }
     }
 }

@@ -68,6 +68,13 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly QueueStore _queueStore;
     private readonly DispatcherQueueTimer _queueSaveTimer;
 
+    // 队列行缩略图：后台串行截帧（同一时刻只起一个 ffmpeg 抽帧进程），
+    // 同一路径绝不重复排队（详见 EnsureQueueThumbnail）。
+    private readonly Queue<QueueItem> _thumbnailJobs = new();
+    private readonly HashSet<string> _thumbnailJobPaths = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _thumbnailJobLock = new();
+    private bool _thumbnailPumpRunning;
+
     public MainViewModel(IFfmpegLocator locator, DispatcherQueue dispatcher)
     {
         _locator = locator;
@@ -163,6 +170,8 @@ public sealed partial class MainViewModel : ObservableObject
         SelectedEncoderOption = EncoderOptions.FirstOrDefault();
         StatusBrush = NormalTextBrush;
         RestoreQueueFromSnapshot();
+        // 顺手清理过期的"重新截取"产物（7 天）；稳定缓存名保留，任何失败都不影响启动
+        ThumbnailCache.PruneStaleRecaptures(TimeSpan.FromDays(7));
         _ = ProbeEncodersAsync();
         RefreshQueueSummary();
     }
@@ -196,6 +205,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private QueueItem? _selectedItem;
+
+    /// <summary>上一个选中项：SelectedItem 变更时用来收起它的行内详情区（IsCurrent）。</summary>
+    private QueueItem? _currentItem;
 
     [ObservableProperty]
     private string _selectedContainer = ".mp4";
@@ -565,7 +577,6 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _audioCodecText = "-";
     [ObservableProperty] private string _audioChannelsText = "-";
     [ObservableProperty] private string _bitRateText = "-";
-    [ObservableProperty] private ImageSource? _thumbnail;
     [ObservableProperty] private double _thumbnailPosition;
     [ObservableProperty] private string _outputPathText = "-";
 
@@ -683,6 +694,21 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnSelectedItemChanged(QueueItem? value)
     {
+        // 行内详情区只跟随当前选中项：先收起旧行，再展开新行（同一项时不重复通知）
+        if (!ReferenceEquals(_currentItem, value))
+        {
+            if (_currentItem is not null)
+            {
+                _currentItem.IsCurrent = false;
+            }
+
+            _currentItem = value;
+            if (value is not null)
+            {
+                value.IsCurrent = true;
+            }
+        }
+
         OnPropertyChanged(nameof(HasSelectedItem));
         if (value is null)
         {
@@ -694,8 +720,9 @@ public sealed partial class MainViewModel : ObservableObject
         if (value.Info is not null)
         {
             ApplyMediaInfo(value.Info);
-            ThumbnailPosition = Math.Round((value.Info.Duration?.TotalSeconds ?? 0) * 0.25, 2);
-            _ = CaptureThumbnailAsync(value.InputPath);
+            // 时间点用与后台截帧同一条默认规则（10% 时长，不早于 1 秒），作为「重新截取」的起点；
+            // 行内缩略图本身由后台管线在入队 / 启动恢复时备好（缓存优先），选中哪一行都不再隐式重截。
+            ThumbnailPosition = Math.Round(DefaultThumbnailPosition(value.Info.Duration).TotalSeconds, 2);
         }
         else
         {
@@ -845,6 +872,7 @@ public sealed partial class MainViewModel : ObservableObject
             var item = _queue.Enqueue(path, BuildSettings(), info);
             TrackItem(item);
             Queue.Add(item);
+            EnsureQueueThumbnail(item);
             SelectedItem ??= item;
             added++;
         }
@@ -868,42 +896,183 @@ public sealed partial class MainViewModel : ObservableObject
         RefreshQueueSummary();
     }
 
+    /// <summary>
+    /// 重新截取选中行的缩略图（RecaptureButton）：按当前时间点写一张带时间戳的新图到缓存目录，
+    /// 再把新路径回填到那一行——行内 Image 的转换器是按路径缓存已解码图片的，换新路径即重新解码。
+    /// 稳定缓存名（入队时截的那张）不删，留给下次启动 / 重新入队兜底。
+    /// </summary>
     [RelayCommand]
     private async Task CaptureThumbnailAsync()
     {
-        if (SelectedItem is not null)
-        {
-            await CaptureThumbnailAsync(SelectedItem.InputPath);
-        }
-    }
-
-    private async Task CaptureThumbnailAsync(string videoPath)
-    {
-        if (_thumbnailService is null)
+        if (SelectedItem is not { } item || _thumbnailService is null)
         {
             return;
         }
 
         var at = TimeSpan.FromSeconds(Math.Max(0, ThumbnailPosition));
-        var output = Path.Combine(Path.GetTempPath(), "VideoConverter", Guid.NewGuid().ToString("N") + ".jpg");
+        var output = ThumbnailCache.PathForRecapture(item.InputPath, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        var previous = item.ThumbnailPath;
 
         try
         {
-            await _thumbnailService.CaptureAsync(videoPath, at, output);
-            using var stream = File.OpenRead(output);
-            // 缩略图按 220 DIP 显示，高 DPI 下按 440 物理像素解码才不会发虚
-            var bitmap = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage { DecodePixelWidth = 440 };
-            await bitmap.SetSourceAsync(stream.AsRandomAccessStream());
-            Thumbnail = bitmap;
+            await _thumbnailService.CaptureAsync(item.InputPath, at, output);
         }
         catch (Exception ex)
         {
-            SetStatus($"缩略图截取失败：{ex.Message}", true);
-        }
-        finally
-        {
+            // 失败的半成品不要留在缓存目录里
             TryDelete(output);
+            SetStatus($"缩略图截取失败：{ex.Message}", true);
+            return;
         }
+
+        item.ThumbnailPath = output;
+
+        // 旧帧尽力清理：同一毫秒内连点两次时 previous == output，别把刚写好的文件删掉
+        if (previous is not null
+            && !string.Equals(previous, output, StringComparison.OrdinalIgnoreCase)
+            && !ThumbnailCache.IsStableFileName(Path.GetFileName(previous)))
+        {
+            TryDelete(previous);
+        }
+    }
+
+    // ---- 队列行缩略图：后台串行截帧 + 磁盘缓存（%LOCALAPPDATA%\VideoConverter\thumbs） ----
+
+    /// <summary>
+    /// 让队列行拿到真实缩略图：缓存文件已存在就立即回填，否则排一个后台截帧任务。
+    /// 仅在 UI 线程调用（添加文件与启动恢复两条路径都在 UI 线程）。
+    /// </summary>
+    private void EnsureQueueThumbnail(QueueItem item)
+    {
+        var cachePath = ThumbnailCache.PathFor(item.InputPath);
+        if (File.Exists(cachePath))
+        {
+            // 缓存优先，且与 ffmpeg 是否可用无关：没有 ffmpeg 时恢复出来的旧任务
+            // 也应显示上次截好的帧（只是没法再补截新的）。
+            item.ThumbnailPath = cachePath;
+            return;
+        }
+
+        if (_thumbnailService is null)
+        {
+            return;
+        }
+
+        lock (_thumbnailJobLock)
+        {
+            // 去重：同一路径已排队或正在截帧，就不再排第二个任务
+            if (!_thumbnailJobPaths.Add(cachePath))
+            {
+                return;
+            }
+
+            _thumbnailJobs.Enqueue(item);
+        }
+
+        PumpThumbnailJobs();
+    }
+
+    private void PumpThumbnailJobs()
+    {
+        lock (_thumbnailJobLock)
+        {
+            if (_thumbnailPumpRunning)
+            {
+                return;
+            }
+
+            _thumbnailPumpRunning = true;
+        }
+
+        _ = RunThumbnailJobsAsync();
+    }
+
+    /// <summary>
+    /// 串行消费截帧队列。异常一律吞掉：单个文件截帧失败只意味着那一行继续显示彩色占位块，
+    /// 不该打断队列，也不值得弹错——回退到占位块本身就是设计的一部分。
+    /// </summary>
+    private async Task RunThumbnailJobsAsync()
+    {
+        while (true)
+        {
+            QueueItem item;
+            string cachePath;
+            lock (_thumbnailJobLock)
+            {
+                if (_thumbnailJobs.Count == 0)
+                {
+                    _thumbnailPumpRunning = false;
+                    return;
+                }
+
+                item = _thumbnailJobs.Dequeue();
+                cachePath = ThumbnailCache.PathFor(item.InputPath);
+            }
+
+            try
+            {
+                // 排队期间缓存可能已被写出来（同一文件先前的任务完成），没必要重复截帧
+                if (!File.Exists(cachePath) && _thumbnailService is { } service)
+                {
+                    await service
+                        .CaptureAsync(item.InputPath, ResolveThumbnailPosition(item), cachePath)
+                        .ConfigureAwait(false);
+                }
+
+                SetQueueThumbnail(item, cachePath);
+            }
+            catch (Exception)
+            {
+                // 保持 ThumbnailPath = null：行内继续显示彩色占位块
+            }
+            finally
+            {
+                lock (_thumbnailJobLock)
+                {
+                    _thumbnailJobPaths.Remove(cachePath);
+                }
+            }
+        }
+    }
+
+    /// <summary>后台截帧时间点：走 <see cref="DefaultThumbnailPosition"/> 的默认规则。</summary>
+    private static TimeSpan ResolveThumbnailPosition(QueueItem item) =>
+        DefaultThumbnailPosition(item.Info?.Duration);
+
+    /// <summary>
+    /// 默认截帧时间点：时长的 10%，但不早于 1 秒。开头常有黑帧或台标，固定取 1 秒会截到
+    /// 台标刚收起的画面；按时长 10% 能落到正片内（17 秒的片子取约 1.7 秒）。
+    /// 时长未知或为 0 时退到第 1 秒；最后夹到时长本身，避免短视频的 seek 落到末尾之后。
+    /// </summary>
+    private static TimeSpan DefaultThumbnailPosition(TimeSpan? duration)
+    {
+        if (duration is not { } total || total <= TimeSpan.Zero)
+        {
+            return TimeSpan.FromSeconds(1);
+        }
+
+        var at = total * 0.1;
+        if (at < TimeSpan.FromSeconds(1))
+        {
+            at = TimeSpan.FromSeconds(1);
+        }
+
+        return at > total ? total : at;
+    }
+
+    /// <summary>
+    /// 回填缩略图路径。截帧续体在线程池线程上，跨线程设置的 PropertyChanged 会被绑定静默丢弃，
+    /// 因此统一切回 UI 线程再赋值。
+    /// </summary>
+    private void SetQueueThumbnail(QueueItem item, string path)
+    {
+        if (!_dispatcher.HasThreadAccess)
+        {
+            _dispatcher.TryEnqueue(() => item.ThumbnailPath = path);
+            return;
+        }
+
+        item.ThumbnailPath = path;
     }
 
     [RelayCommand]
@@ -1108,11 +1277,13 @@ public sealed partial class MainViewModel : ObservableObject
             item.OverrideCrf = entry.OverrideCrf;
             TrackItem(item);
             Queue.Add(item);
+            // 恢复的任务不再跑 ffprobe，但缩略图仍要有：命中缓存直接回填，否则补截一次
+            EnsureQueueThumbnail(item);
             restored++;
         }
 
-        // 恢复后必须选中一项：否则「媒体信息」（缩略图 + 字段）会一直隐藏，
-        // 需求 1 的"加载视频信息并显示缩略图"在重启场景下会静默失效。
+        // 恢复后必须选中一项：选中项驱动 QueueItem.IsCurrent，也就是行内详情区的展开；
+        // 没有选中项时详情区（容器/时长/编码等）在重启场景下会静默消失。
         SelectedItem ??= Queue.FirstOrDefault();
 
         if (restored == 0 && skipped == 0)
@@ -1409,7 +1580,6 @@ public sealed partial class MainViewModel : ObservableObject
         FileSizeText = ContainerText = DurationText = ResolutionText = "-";
         FrameRateText = VideoCodecText = AudioCodecText = "-";
         AudioChannelsText = BitRateText = "-";
-        Thumbnail = null;
         OutputPathText = "-";
     }
 

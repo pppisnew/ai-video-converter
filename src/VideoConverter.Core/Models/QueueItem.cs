@@ -70,6 +70,49 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
     public string SourceFormat =>
         System.IO.Path.GetExtension(InputPath).TrimStart('.').ToUpperInvariant();
 
+    private string? _thumbnailPath;
+
+    /// <summary>
+    /// 队列行缩略图的缓存文件路径（由 MainViewModel 的后台截帧管线回填，见 <c>ThumbnailCache</c>）。
+    /// null = 还没截到帧，列表行继续显示彩色占位块——这是设计中的兜底状态，不是错误。
+    /// 纯展示属性：不参与转换逻辑，也不写进队列快照（重启后由缓存目录重新推导）。
+    /// </summary>
+    public string? ThumbnailPath
+    {
+        get => _thumbnailPath;
+        set
+        {
+            if (_thumbnailPath == value)
+            {
+                return;
+            }
+
+            _thumbnailPath = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(ThumbnailPath)));
+        }
+    }
+
+    private bool _isCurrent;
+
+    /// <summary>
+    /// 这一行是否是当前选中项（驱动行内详情区的展开：只有选中的那一行会长高）。
+    /// 仅由 MainViewModel 在 SelectedItem 变更时维护；纯展示属性，不参与转换逻辑，也不写进队列快照。
+    /// </summary>
+    public bool IsCurrent
+    {
+        get => _isCurrent;
+        set
+        {
+            if (_isCurrent == value)
+            {
+                return;
+            }
+
+            _isCurrent = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsCurrent)));
+        }
+    }
+
     /// <summary>队列项状态的中文展示文本（UI 无关，供列表直接绑定）。</summary>
     public string StateText => State switch
     {

@@ -164,12 +164,15 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
 
-                                <!-- 缩略图占位：模型没有逐项缩略图，用按文件名取色的柔和色块 + 时长角标 -->
+                                <!-- 缩略图：真实截帧（后台截好后回填 ThumbnailPath）盖在彩色占位块上；
+                                     帧还没截到时只显示色块 + 时长角标，这是设计中的兜底 -->
                                 <Border Grid.Column="0" Width="96" Height="56" CornerRadius="4"
                                         VerticalAlignment="Center"
-                                        Background="{Binding Converter={StaticResource ThumbnailBrush}, ConverterParameter=task}">
+                                        Background="{ThemeResource LayerFillColorDefaultBrush}">
                                     <Grid>
                                         <FontIcon Glyph="&#xE8B2;" FontSize="28" Foreground="White" Opacity="0.9" />
+                                        <Image Source="{Binding ThumbnailPath, Mode=OneWay, Converter={StaticResource PathToImageSource}}"
+                                               Stretch="Uniform" />
                                         <Border HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                 Margin="0,0,4,3" Padding="4,0" CornerRadius="3"
                                                 Background="#8C000000"

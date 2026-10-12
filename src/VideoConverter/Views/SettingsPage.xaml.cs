@@ -28,7 +28,11 @@ public sealed partial class SettingsPage : Page
 
     private void OnPageSizeChanged(object sender, SizeChangedEventArgs e) => ApplyBreakpoint();
 
-    /// <summary>分组断点：<920 DIP 从两列收成单列（不依赖 VisualStateManager）。</summary>
+    /// <summary>
+    /// 分组断点：<920 DIP 从两列收成单列（不依赖 VisualStateManager）。
+    /// 两列是各自的 StackPanel，列内卡片自然堆叠、高度互不牵连；
+    /// 单列时只把右列整块挪到左列下方，卡片本身不重新排列。
+    /// </summary>
     private void ApplyBreakpoint()
     {
         var width = XamlRoot?.Size.Width ?? 0;
@@ -38,23 +42,16 @@ public sealed partial class SettingsPage : Page
         }
 
         var singleColumn = width < SingleColumnBreakpoint;
+
+        // 单列：右列（界面 / 关于）整块落到左列（常规 / 编码器 / ffmpeg）下方，
+        // 于是窄窗口顺序是 常规 / 编码器 / ffmpeg / 界面 / 关于——这是接受的行为。
         SettingsSecondColumn.Width = singleColumn ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        Grid.SetColumn(RightColumn, singleColumn ? 0 : 1);
+        Grid.SetRow(RightColumn, singleColumn ? 1 : 0);
 
-        // 单列时消掉列间距，否则卡片右侧会留下一条空隙
+        // 单列时消掉列间距、改用行间距：前者避免卡片右侧留空隙，后者给两段之间留出间隔
         SettingsLayout.ColumnSpacing = singleColumn ? 0 : 20;
-
-        // 两列：左列 ffmpeg / 常规，右列 关于 / 界面，编码器独占最后一行。
-        // 单列顺序：ffmpeg -> 关于 -> 常规 -> 界面 -> 编码器（编码器永远在最后）。
-        Grid.SetRow(GroupFfmpeg, 0);
-        Grid.SetColumn(GroupFfmpeg, 0);
-        Grid.SetRow(GroupAbout, singleColumn ? 1 : 0);
-        Grid.SetColumn(GroupAbout, singleColumn ? 0 : 1);
-        Grid.SetRow(GroupRegular, singleColumn ? 2 : 1);
-        Grid.SetColumn(GroupRegular, 0);
-        Grid.SetRow(GroupAppearance, singleColumn ? 3 : 1);
-        Grid.SetColumn(GroupAppearance, singleColumn ? 0 : 1);
-        Grid.SetRow(GroupEncoder, singleColumn ? 4 : 2);
-        Grid.SetColumn(GroupEncoder, 0);
+        SettingsLayout.RowSpacing = singleColumn ? 20 : 0;
     }
 
     /// <summary>主题单选：Tag 直接给枚举名，解析失败就忽略，不写坏设置。</summary>
