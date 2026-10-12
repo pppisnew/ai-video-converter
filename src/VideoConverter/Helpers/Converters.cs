@@ -127,8 +127,9 @@ public sealed class TaskFilterToChipStyleConverter : IValueConverter
 }
 
 /// <summary>
-/// 缩略图占位底色：按文件名确定性地取一组柔和渐变（对应原型的 hsl 渐变），
-/// 保证每行颜色不同且同一文件颜色稳定。
+/// 缩略图占位底色：按行位置取一组柔和渐变（对应原型的 hsl 渐变）。
+/// 用行号而非文件哈希，保证同一页面内相邻两行一定不同色；
+/// ConverterParameter="task" 时按任务页筛选后的顺序取号，其余按转换页队列顺序。
 /// </summary>
 public sealed class ThumbnailBrushConverter : IValueConverter
 {
@@ -156,24 +157,27 @@ public sealed class ThumbnailBrushConverter : IValueConverter
 
     public object Convert(object value, Type targetType, object parameter, string language)
     {
-        var name = value switch
-        {
-            QueueItem item => item.FileName,
-            string text => text,
-            _ => string.Empty,
-        };
-
-        var hash = 0;
-        foreach (var ch in name)
-        {
-            hash = unchecked(hash * 31 + ch);
-        }
-
-        return Brushes[(hash & 0x7FFFFFFF) % Brushes.Length];
+        var index = ResolveRowIndex(value, parameter);
+        return Brushes[index % Brushes.Length];
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language) =>
         throw new NotSupportedException();
+
+    /// <summary>行号来自所在列表的真实位置：转换页队列顺序 / 任务页筛选后顺序。</summary>
+    private static int ResolveRowIndex(object value, object parameter)
+    {
+        if (value is not QueueItem item)
+        {
+            return 0;
+        }
+
+        IList<QueueItem> rows = parameter is string scope && scope.Equals("task", StringComparison.OrdinalIgnoreCase)
+            ? App.ViewModel.FilteredTasks
+            : App.ViewModel.Queue;
+        var index = rows.IndexOf(item);
+        return index < 0 ? 0 : index;
+    }
 
     private static Color FromHsl(double hue, double saturation, double lightness)
     {

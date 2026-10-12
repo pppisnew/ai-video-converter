@@ -167,7 +167,7 @@
                                 <!-- 缩略图占位：模型没有逐项缩略图，用按文件名取色的柔和色块 + 时长角标 -->
                                 <Border Grid.Column="0" Width="96" Height="56" CornerRadius="4"
                                         VerticalAlignment="Center"
-                                        Background="{Binding Converter={StaticResource ThumbnailBrush}}">
+                                        Background="{Binding Converter={StaticResource ThumbnailBrush}, ConverterParameter=task}">
                                     <Grid>
                                         <FontIcon Glyph="&#xE8B2;" FontSize="22" Foreground="White" Opacity="0.9" />
                                         <Border HorizontalAlignment="Right" VerticalAlignment="Bottom"
@@ -247,7 +247,7 @@
                                             AutomationProperties.Name="重试该任务">
                                         <FontIcon Glyph="&#xE72C;" FontSize="18" />
                                     </Button>
-                                    <Button Style="{StaticResource DangerHoverIconButtonStyle}"
+                                    <Button Style="{StaticResource DangerIconButtonStyle}"
                                             Click="RemoveItemButton_Click"
                                             ToolTipService.ToolTip="从队列移除"
                                             AutomationProperties.Name="移除该队列项">

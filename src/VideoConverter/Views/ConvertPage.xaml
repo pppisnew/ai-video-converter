@@ -122,7 +122,7 @@
                                                 <!-- 缩略图占位：模型没有逐项缩略图，用按文件名取色的柔和色块 + 时长角标 -->
                                                 <Border Grid.Column="1" Width="96" Height="56" CornerRadius="4"
                                                         VerticalAlignment="Top"
-                                                        Background="{Binding Converter={StaticResource ThumbnailBrush}}">
+                                                        Background="{Binding Converter={StaticResource ThumbnailBrush}, ConverterParameter=queue}">
                                                     <Grid>
                                                         <FontIcon Glyph="&#xE8B2;" FontSize="22" Foreground="White" Opacity="0.9" />
                                                         <Border HorizontalAlignment="Right" VerticalAlignment="Bottom"
@@ -492,7 +492,7 @@
                                         <TextBlock Text="开始转换" />
                                     </StackPanel>
                                 </Button>
-                                <Button Style="{StaticResource LargeButtonStyle}" HorizontalAlignment="Stretch"
+                                <Button Style="{StaticResource LargeDangerButtonStyle}" HorizontalAlignment="Stretch"
                                         Command="{x:Bind ViewModel.ClearQueueCommand, Mode=OneWay}"
                                         IsEnabled="{x:Bind ViewModel.QueueEmpty, Mode=OneWay, Converter={StaticResource InverseBoolToBoolean}}"
                                         AutomationProperties.Name="清空队列" AutomationProperties.AutomationId="ClearQueueButton">
