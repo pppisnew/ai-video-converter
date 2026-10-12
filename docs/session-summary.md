@@ -482,3 +482,88 @@ initial: 1180x800 physical, dpi=144 => 787x533 DIP
 - 构建 0/0，142 测试全绿
 - 截图：`shots/10-compact-empty.png`、`11-compact-file.png`、`12-compact-empty.png`、
   `13-compact-file.png`、`1600x1000-0.png`、`800x600-0.png`
+
+
+---
+
+## 四期：P1–P2 按阶段验收执行（2026-10-12）
+
+> 本节取代上文「## 当前状态」。上一节起用户改为**一个阶段一轮验收**：
+> 每个 P 做完跑构建 + 全量测试 + 截图，停下来等用户验收，通过才进下一个。
+
+### 计划与执行方式
+
+- 计划文件：`.trellis/tasks/10-11-frontend-polish/ui-remaining-plan.md`
+  （§五 是 P1–P6 顺序，§四 是已锁定决策，§七 是已砍项）
+- P1 曾在用户叫停前派发过一次，半成品停在 `git stash`；本轮 `git stash pop` 复用，
+  没有从零重做
+- Trellis 活动任务：`10-11-frontend-polish`
+
+### P1：缩略图配色 + 危险操作红色
+
+- `ThumbnailBrushConverter` 由按文件名哈希改为按**行序号**取色
+  （`ConverterParameter=queue` / `task` 区分转换页队列序与任务页筛选后序）
+- 新增 `AppDangerSolidBackground` / `AppDangerOnSolidForeground` 三主题画刷，
+  以及 `DangerIconButtonStyle` / `LargeDangerButtonStyle`
+- **用户对照原型后修正了轻重**：原计划写「清空队列常驻红（满色块）」，
+  原型里 `.btn.danger` 只改 `color`、底色仍是次级底。最终定为
+  **红字/红图标 + 透明底，悬停才出淡红底**；转换页队列行 ✕ 保持"悬停才红"
+- 实测三行色相 224.9° / 174.7° / 270.2°，不再撞色
+
+### 原型对比的核实（重要，避免被错误结论带偏）
+
+用户转来一份"差距清单"，称**任务列表页是只读列表、每个任务行只有一个 ×**。
+逐条核对代码后该结论**不成立**：`QueuePage.xaml` 行内本就有三个按钮，
+`定位输出文件`（已完成时）、`重试该任务`（失败时）、`移除该队列项`（始终），
+且都按项绑定 `RevealOutputFor(item)` / `RetryItem(item)`。
+用户截图里只看到 ×，是因为当时 3 个文件全是"等待中"态。
+
+真正的缺口只有两个，都已处理：
+
+1. **「转换中」行没有取消按钮**（原型给的是 暂停+取消；暂停已确认不做）
+   → 补 `CancelItem(item)` + 行内按钮
+2. **`MP4 · 自动` 是只读文本，容易被误认为可点下拉**
+   → `TargetSummary` 追加 `（继承全局）`
+
+另外核实：副标题文案本来就诚实（无 GIF），全项目无 GIF 字样，无需改动。
+
+### P2：主题 + 设置持久化 + 逐项取消
+
+- **Core 层新增** `AppSettings`（Theme/Container/Crf/Scale/AudioBitrateKbps，
+  带 `Sanitized()` 夹取越界值）与 `AppSettingsStore`
+  （`%LOCALAPPDATA%\VideoConverter\settings.json`，读失败回退默认、写失败静默忽略）
+- `MainViewModel` 构造时**先读回再赋默认值**（顺序反了会在启动瞬间覆盖掉存下来的设置）；
+  落盘 250ms 防抖，拖质量滑杆只写一次
+- 主题：`MainWindow` 把 `RequestedTheme` 施加到**窗口内容根**
+  （WinUI 3 的 Window 没有该属性）；设置页新增「界面」卡片 + 三个单选，
+  选中态每次页面加载从 ViewModel 回填
+- 任务列表页「转换中」行补取消按钮（队列严格顺序，取消一项即取消当前项）
+- 新增 6 个单测，总计 **148/148 通过**，构建 0 警告 0 错误
+- 实测：切深色内容区立即变深；`settings.json` 落盘 `"Theme": "Dark"`；
+  **重启后仍是深色且单选态正确**
+
+### 本轮踩坑（值得记住）
+
+1. **横向排列的多个 TextBlock 无法表达"整体截断"**：给 `TargetSummary` 追加
+   `（继承全局）` 后，元信息行里靠后的元素被**整个挤出视野**
+   （"· 中等"消失，`自动（`被切一半）。改成单个 `QueueItem.MetaLine` 属性 +
+   单个 TextBlock，超宽只在末端截断加省略号。同时删掉与缩略图角标重复的时长。
+2. **`.ps1` 里不要写中文字面量**：本环境 `Set-Content -Encoding utf8` 不带 BOM，
+   且用 Windows PowerShell 5.1 执行，脚本内的中文被按 ANSI 解码损坏，
+   UIA 按 Name 匹配静默失败（表现为"点了没反应"）。一律用 `[char]0xXXXX` 构造。
+3. **`SelectionItemPattern.Select()` 远优于合成鼠标点击**：同样点单选按钮，
+   前者稳定生效，后者在设置页上完全没反应。
+4. **构建前必须关掉正在运行的应用**：`VideoConverter.exe` 会锁住输出 DLL，
+   `dotnet build` 重试 10 次后失败（MSB3027）。
+
+### 遗留（建议并入 P3）
+
+- 转换页队列行比任务列表页窄，1180 DIP 下「（继承全局）」仍被省略号吃掉
+  （已加 ToolTip 保证完整信息可达）。P3 把上移/下移收进行内右键菜单后
+  可腾出约 60 DIP，届时能完整显示。
+
+### 下一步
+
+P2 等用户验收。通过后 P3：帧率参数（Core+面板+测试）+
+转换完成后打开输出文件夹 + 开源许可对话框 + 三条视觉打磨
+（面板行距收紧、缩略图图标 22→28px、上移/下移收进右键菜单）。
