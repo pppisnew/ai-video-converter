@@ -92,26 +92,32 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
         }
     }
 
-    private bool _isCurrent;
+    private bool _isExpanded;
 
     /// <summary>
-    /// 这一行是否是当前选中项（驱动行内详情区的展开：只有选中的那一行会长高）。
-    /// 仅由 MainViewModel 在 SelectedItem 变更时维护；纯展示属性，不参与转换逻辑，也不写进队列快照。
+    /// 这一行的媒体信息展开区是否可见，由行尾 ▼/▲ 按钮切换。
+    /// 与"是否选中"解耦：选中只负责行高亮（由 ListViewItem 的 Selected 视觉态渲染）
+    /// 与右侧面板「缩略图时间点」的作用对象，展开由用户单独控制，因此允许多行同时展开。
+    /// 纯展示属性，不写进队列快照（重启后一律收起）。
     /// </summary>
-    public bool IsCurrent
+    public bool IsExpanded
     {
-        get => _isCurrent;
+        get => _isExpanded;
         set
         {
-            if (_isCurrent == value)
+            if (_isExpanded == value)
             {
                 return;
             }
 
-            _isCurrent = value;
-            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsCurrent)));
+            _isExpanded = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsExpanded)));
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(ExpandToggleLabel)));
         }
     }
+
+    /// <summary>行尾展开按钮的无障碍名与工具提示（随展开状态在"展开/收起媒体信息"之间切换）。</summary>
+    public string ExpandToggleLabel => IsExpanded ? "收起媒体信息" : "展开媒体信息";
 
     /// <summary>队列项状态的中文展示文本（UI 无关，供列表直接绑定）。</summary>
     public string StateText => State switch
@@ -179,6 +185,30 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
             ? $"{duration.Hours}:{duration.Minutes:00}:{duration.Seconds:00}"
             : $"{duration.Minutes:00}:{duration.Seconds:00}"
         : string.Empty;
+
+    // ---- 展开区技术字段（第二层级信息）----
+    //
+    // 必须绑到所属 QueueItem 而不是 MainViewModel：展开区现在可以多行同时展开，
+    // 绑到"当前选中项"的 VM 级属性会让所有展开行显示同一份数据。
+    // 时长 / 分辨率不在这里——它们已经在 MetaLine 里，重复展示只会拉高行高。
+
+    /// <summary>展开区：容器格式（无媒体信息时兜底 "-"）。</summary>
+    public string ContainerDetailText => Info?.ContainerFormat ?? "-";
+
+    /// <summary>展开区：视频编码。</summary>
+    public string VideoCodecDetailText => Info?.VideoCodec ?? "-";
+
+    /// <summary>展开区：音频编码。</summary>
+    public string AudioCodecDetailText => Info?.AudioCodec ?? "-";
+
+    /// <summary>展开区：帧率（与 MainViewModel 的旧展示格式一致，如 "30 fps"）。</summary>
+    public string FrameRateDetailText => Info?.FrameRate is { } fps ? $"{fps:0.###} fps" : "-";
+
+    /// <summary>展开区：声道数。</summary>
+    public string AudioChannelsDetailText => Info?.AudioChannels?.ToString() ?? "-";
+
+    /// <summary>展开区：总码率（kbps，与 MainViewModel 的旧展示格式一致，如 "822 kbps"）。</summary>
+    public string BitRateDetailText => Info?.BitRate is { } bitRate ? $"{bitRate / 1000} kbps" : "-";
 
     /// <summary>质量档位文案，按**生效** CRF 推导（覆盖优先，见 <see cref="QualityLabelFor"/>）。</summary>
     public string QualityLabel => QualityLabelFor(EffectiveCrf);

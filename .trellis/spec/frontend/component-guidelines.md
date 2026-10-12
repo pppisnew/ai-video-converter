@@ -85,12 +85,48 @@ $ok = [Shot]::PrintWindow($hwnd, $hdc, 2)   # 2 = PW_RENDERFULLCONTENT
 
 ## 页面骨架约定
 
-- **页标题归属**：页面标题显示在窗口头部（`HeaderTitle`，由导航切换时更新），
-  页面自身不再重复渲染标题；唯一的 `PageTitleStyle` 用法应出现在 MainWindow。
-- **主操作常驻**：主操作按钮（如"开始转换"）与进度必须放在 `ScrollViewer` **之外**的
-  固定行，窗口再矮也不能被滚动带走。空闲时隐藏进度条与进度文本，避免与底部状态栏重复文案。
+- **页标题归属**：三个页面各自用 `PageTitleStyle` 渲染页标题；`MainWindow` 只有导航 +
+  右下浮层提示，**没有** `HeaderTitle`。（更早一版 spec 写"标题统一放窗口头部、页面不再渲染标题"，
+  那条从未落地；代码与界面都按"标题在页内"自洽，2026-10-12 据此改正。）
+- **主操作常驻**：主操作按钮（如「开始转换」）必须放在滚动容器**之外**的固定行。
+  宽窗的做法是设置面板内部 `卡头 / 滚动区(*) / 操作条(Auto)` 三段式，面板随窗口撑满高度，
+  操作条钉在面板底部——600 DIP 高、20 项队列时实测按钮仍在屏内。
+  窄窗单列时页面本身要滚，按钮需要滚到面板处才可见（已知取舍，见 `总结文档.md` 第十一节）。
+  空闲时隐藏进度条与进度文本，避免与底部状态栏重复文案。
 - **空态只留一件事**：无数据时不显示 `-` 占位、空缩略图框和不可用控件，
   只保留引导动作（拖放区 + 选择按钮）。空态与有数据态用同一套 `Visibility` 绑定切换。
+
+## 滚动归属随断点切换（2026-10-12）
+
+**约定**：同一时刻只让**一个**容器当纵向滚动的"主动方"，另一方向的滚动显式关掉——否则滚轮会先喂给
+内层容器，用户滚半天页面不动。
+
+- **宽窗（≥1100 DIP）**：`PageScroll.VerticalScrollMode = Disabled`（内容按视口高度测量，
+  于是 `*` 行成为真正的内部滚动容器）→ 队列 `ListView` 自己滚（`Auto` + `Auto`），
+  设置面板内部 `SettingsScroll` 自己滚，主操作条在面板 `Auto` 尾行常驻。
+- **窄窗（<1100 DIP，单列）**：`PageScroll` 恢复滚动，`QueueList` 与 `SettingsScroll` 的
+  `VerticalScrollMode` 一并置 `Disabled`，队列行高从 `*` 退回 `Auto`，设置面板落到下一行整宽。
+- 两套状态在 `ConvertPage.xaml.cs` 的 `ApplyBreakpoint()` 里按**窗口宽度**（`XamlRoot.Size.Width`）
+  切换，`Loaded` 与 `SizeChanged` 都会重算；**不要**改用 `VisualStateManager`（见上文断点约定）。
+
+**验收方式**：UIA 读 `ScrollPattern.VerticallyScrollable`——宽窗下整页必须为 `false`、
+队列列表为 `true`；窄窗下整页为 `true`、两处内部容器为 `false`。只截一张图看不出滚动归属。
+
+## 列表行：展开态与选中态解耦（2026-10-12）
+
+- 行的"媒体信息展开"由 `QueueItem.IsExpanded` 驱动（行尾 `▼/▲`，`ExpandToggleButton`），
+  **不**跟选中绑定；选中只负责高亮（`ListViewItem` 的 `Selected` 视觉态）与"右侧面板作用于哪一项"。
+  `QueueItem.IsCurrent` 这类"当前选中项"标志位因此是多余的，本轮已删除——凡是"仅由 VM 写、没人读"
+  的展示字段，都应视为死状态。
+- 默认规则：入队与启动恢复一律收起；**切换选中**时展开新选中项；**取消选中不收起**，
+  因此允许多行同时展开。展开状态不写进 `queue.json`。
+- 后果：展开区的字段必须绑到**所属 item**（`QueueItem.*DetailText`），不能绑"当前选中项"的
+  ViewModel 属性——否则多行展开时所有行会显示同一份数据。
+- 集合重建（上移/下移会 `Queue.Clear()` 再填）会让选中项短暂变 null 再变回来，从而触发一次
+  "新选中项自动展开"；重建前后要保存/还原展开集合，否则会把用户没碰过的行撑开。
+
+**验收方式**：① 行高往返（折叠 ≈91 DIP ↔ 展开 ≈195 DIP）；② 用**真实鼠标点击**行尾按钮
+（`InvokePattern` 绕过指针事件，测不出"点按钮顺带改选中"）；③ 同时展开两行后核对两行字段各自独立。
 
 ## 无障碍 / 可测试性
 
@@ -169,6 +205,23 @@ WinUI 3 的 `ComboBox` 在**未展开**状态下也会响应 `PointerWheelChange
 
 注意：必须在**子类 override** 里拦截。在 XAML 上给元素挂 `PointerWheelChanged` 事件处理器
 来不及——类的 On* 虚方法先于实例事件处理器执行。
+
+## NumberBox 的步进按钮：不要用 Compact（2026-10-12 实测）
+
+`NumberBox` 的 `SpinButtonPlacementMode="Compact"` 在本机 SDK（Windows App SDK 2.5.1 /
+`Microsoft.WinUI.dll` 3.0.0.2609）下，控件**获得焦点**时会把步进按钮渲染成一个
+**脱离控件的悬浮面板**：尺寸远大于控件、带阴影、盖住输入框里的数值，且点击其他位置不会关闭。
+用户表现为"数值显示不全 + 上下按钮突兀地大 + 退不出焦点"（`Inline` 正常但会占掉输入框宽度，
+`Hidden` 完全不渲染步进按钮）。
+
+本项目的约定：参数输入框一律 `SpinButtonPlacementMode="Hidden"`，数值由用户直接键入
+（Enter / 失焦提交），保留 `Minimum`/`Maximum` 校验与 `NoWheelNumberBox` 的滚轮保护。
+**不要**再给这两个控件加自绘的上下按钮——用户已明确否掉（"改动太麻烦了"）。
+
+> **验收陷阱**：`tools/ui-shot.ps1` 用的是 `PrintWindow(..., PW_RENDERFULLCONTENT)`，
+> **抓不到这个悬浮面板**（截图里一切正常）。凡是"浮层/弹出物"类的渲染问题，
+> 必须改用真实屏幕截图（`System.Drawing` + `CopyFromScreen`，先 `SetForegroundWindow`）复核；
+> 焦点类问题可对 `AutomationId="InputBox"` 调 UIA `SetFocus()` 稳定复现，无需精确坐标点击。
 
 ## WinUI 3 陷阱：异步续体的线程亲和性（最坑的一条）
 

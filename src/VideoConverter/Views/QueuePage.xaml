@@ -116,6 +116,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
                 <Button Content="全部" Command="{x:Bind ViewModel.SetTaskFilterCommand}" CommandParameter="All"
@@ -134,22 +135,33 @@
                         Style="{x:Bind ViewModel.TaskFilter, Mode=OneWay, Converter={StaticResource FilterChipStyle}, ConverterParameter=Failed}"
                         AutomationProperties.Name="筛选：失败" />
             </StackPanel>
-            <Button Grid.Column="1" Style="{StaticResource SubtleButtonStyle}" Content="重试失败项"
+            <!-- 全部停止：整队停摆（区别于行内"取消该任务"只停当前这一项）。
+                 只在队列运行中出现，否则它既不可用也没有意义。 -->
+            <Button Grid.Column="1" Style="{StaticResource SubtleButtonStyle}" Content="全部停止"
+                    Foreground="{ThemeResource AppDangerForeground}"
+                    Command="{x:Bind ViewModel.CancelAllCommand, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                    ToolTipService.ToolTip="停止当前任务，其余任务保持等待中"
+                    AutomationProperties.Name="全部停止"
+                    AutomationProperties.AutomationId="StopAllButton" />
+            <Button Grid.Column="2" Style="{StaticResource SubtleButtonStyle}" Content="重试失败项"
                     Command="{x:Bind ViewModel.RetryFailedCommand, Mode=OneWay}"
                     Visibility="{x:Bind ViewModel.HasFailedItems, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
                     AutomationProperties.Name="重试失败项" />
-            <Button Grid.Column="2" Style="{StaticResource SubtleButtonStyle}" Content="清除已完成"
+            <Button Grid.Column="3" Style="{StaticResource SubtleButtonStyle}" Content="清除已完成"
                     Command="{x:Bind ViewModel.ClearCompletedCommand, Mode=OneWay}"
                     AutomationProperties.Name="清除已完成任务" />
         </Grid>
 
-        <!-- 任务行 -->
+        <!-- 任务行：占满剩余高度并**自己滚动**（页头/统计卡/筛选栏固定不动）。
+             本页根是 Grid 而不是 ScrollViewer，所以列表必须自己滚，
+             否则任务数超过一屏时后面的行会被直接裁掉、滚不到。 -->
         <Grid Grid.Row="3">
             <ListView SelectionMode="None"
                       ItemsSource="{x:Bind ViewModel.FilteredTasks, Mode=OneWay}"
                       ItemContainerStyle="{StaticResource QueueItemContainerStyle}"
-                      ScrollViewer.VerticalScrollMode="Disabled"
-                      ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                      ScrollViewer.VerticalScrollMode="Auto"
+                      ScrollViewer.VerticalScrollBarVisibility="Auto"
                       AutomationProperties.Name="任务列表">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="models:QueueItem">

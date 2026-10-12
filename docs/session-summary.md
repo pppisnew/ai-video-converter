@@ -665,3 +665,69 @@ P1、P2 由另一模型完成后，我接手收尾 P3–P6（用户要求"快速
 - 顺手整理 `.gitignore`：原文件有一段被字面量 `\n` 拼在一起的失效行与三份重复块，
   重写为分类清晰的一份；用「改写前后 `git status --ignored -uall` 的集合完全一致」
   验证没有意外放行任何本地产物
+
+### 转换页布局与队列交互（2026-10-12，第十一轮）
+
+用户给出完整方案：整页不滚、队列区独立滚动、右面板固定；齿轮换 `▼/▲`、点击行自动展开、
+允许多项展开、展开状态不持久化；展开区从约 340 DIP 压到 200 DIP 以内；媒体信息分两层。
+规划与决策落在 `.trellis/tasks/10-11-frontend-polish/ui-layout-scroll-expand.md`（含 7 条验收点）。
+
+**分工**：转换页 + 展开交互 + 模型/VM 由 `trellis-implement` 子代理执行；任务列表页由主会话改
+（两行改动，见下），避免同一文件并发编辑。
+
+**实现要点**
+
+- `ConvertPage`：`PageScroll` 只在窄窗承担整页滚动；宽窗队列列表回到自身滚动（`Grid` 行高 `*`）；
+  `SettingsPanel` → `Row=1 RowSpan=3 Stretch`，内部"卡头 / `SettingsScroll` / 固定操作条"，
+  600 DIP 高时参数区滚动而 `开始转换` 仍常驻（实测 `y=474`）。
+- 行模板：新增 `ExpandToggleButton`（`▼` E70D / `▲` E70E，`SubtleIconButtonStyle`），
+  展开区 = `120×68` 预览 + 3 行 × 2 列 12px 字段 + `输出到 <path>` 行 + 齿轮（逐项覆盖 Flyout 原样下移）；
+  `缩略图时间点` / `RecaptureButton` 迁到右侧面板。
+- `QueueItem`：`IsExpanded`（不落盘）、`ExpandToggleLabel`、6 个只读详情字段——
+  字段必须绑所属 item 而不是 VM，否则多行展开时会显示同一份数据。
+- `MainViewModel`：选中即展开（取消选中不收起）；入队与启动恢复显式收起；
+  `RebuildQueueFromCore` 保存/还原展开集合，避免上移下移把没碰过的行撑开；
+  删掉 12 个已无引用的 VM 级展示属性与三个辅助方法。
+- **任务列表页的真实缺陷**：根是 `Grid`、外层无 `ScrollViewer`，列表却 `VerticalScrollMode="Disabled"`
+  → 超过一屏的任务滚不到。改为 `Auto` 后独立滚动成立（`1180×600` 实测 `scrollable=True view=66.9%`）。
+
+**主会话独立复测**（150% DPI，UIA 读 `BoundingRectangle`）：20 项队列滚到底后
+`ConvertButton` 仍 `y=673.3 IsOffscreen=False` 而整页不可滚；展开行 194.7 DIP（≤200）；
+真实鼠标点非选中行的 ▼ → 行高 26→186 且 `selected=False`；两项可同时展开；
+清空后无可滚动区域、主操作置灰仍常驻。构建 0/0，测试 191 → **199**。
+
+**留痕**：`docs/screenshots/convert-page.png` 与 `dark-theme.png` 按新界面重采；
+`%LOCALAPPDATA%` 的合成 20 项队列与 16 个临时副本已清理，`queue.json` 还原为 4 项。
+
+#### 复核（`trellis-check` 子代理）
+
+子代理按规范逐条核查（AutomationId/Name、断点走代码后置、不给滚动内容根加 MaxWidth、
+VM 画刷走主题解析、`IsExpanded` 的通知完整性、逐项覆盖 Flyout、`RecaptureButton` 作用于正确项、
+勾选/全选联动、上移后展开态保持），并修掉三处：补 `RemoveItemButton` 的 AutomationId、
+改正两处与现状不符的注释。
+
+主会话据此又处理了两项判断：
+
+- **`QueueItem.IsCurrent` 已成死状态**（只写不读，行高亮实际由 `ListViewItem` 的 `Selected` 渲染）→ 删除，
+  并把右侧面板「缩略图时间点 / 重新截取」改成"存在选中项才显示"（`HasSelectedItem` 回来了，这次有绑定）。
+- **「全部停止」按钮缺失**：`CancelAll` 能力与命令都在，但界面在原型对齐那轮丢了入口，
+  而 README/总结一直写"取消分两级"。已在任务列表页工具条补回（`StopAllButton`，仅运行中出现，
+  危险色文字），实测点击后 ffmpeg 立即结束、未处理项标记"已取消"、已完成项保留、可"重试失败项"回来。
+
+### 控件修复：NumberBox 步进按钮（2026-10-12）
+
+用户报"两个控件点击后数值显示不全、上下按钮突兀地大、甚至没办法退出焦点"，随后明确要求
+**"取消上下键，用户要修改的时候自行填写就好"**。
+
+- 根因：`缩略图时间点` 与 `音频码率` 两个 `NumberBox` 用的是 `SpinButtonPlacementMode="Compact"`；
+  在本机 SDK（Windows App SDK 2.5.1 / `Microsoft.WinUI.dll` 3.0.0.2609）下，该模式在控件
+  **获得焦点**后会把步进按钮渲染成一个**脱离控件的悬浮面板**（带阴影、尺寸远超控件），
+  盖住输入框里的数值，且点击别处不关闭。与项目样式无关（`Overrides.xaml` 只有具名样式；
+  换成原生 `NumberBox` 同样复现，故排除 `NoWheelNumberBox` 子类）。
+- 修法：两处均改为 `SpinButtonPlacementMode="Hidden"`，取消上下键、改为直接键入；
+  `Minimum/Maximum` 校验与 `NoWheelNumberBox` 的滚轮保护不变。**只改 2 个属性**，无新增样式/按钮/代码
+  （曾试做自绘小步进按钮，用户否掉："改动太麻烦了"）。
+- 验证：浮层类问题**必须用真实屏幕截图**（`System.Drawing` + `CopyFromScreen`，先置前台）——
+  `tools/ui-shot.ps1` 的 `PrintWindow` 抓不到这个面板，会给出"看起来正常"的假结论（第一轮就误判了）；
+  焦点用 UIA 对 `AutomationId="InputBox"` 调 `SetFocus()` 即可稳定复现，无需精确坐标。
+  修复后两个控件聚焦时数值完整可见、无悬浮面板，点空白处焦点正常释放；构建 0 警告 0 错误。

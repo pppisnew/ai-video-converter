@@ -4,3 +4,4 @@
 {"file": ".trellis/spec/frontend/type-safety.md", "reason": "P2 touches XAML bindings and nullable code in the ViewModel"}
 {"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "quality bar for the new code"}
 {"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "settings persistence and per-item cancel span Core queue and UI layer"}
+{"file": ".trellis/tasks/10-11-frontend-polish/ui-layout-scroll-expand.md", "reason": "this round's approved plan: independent queue scrolling, arrow expand toggle, detail slimming, kept-vs-changed decisions"}

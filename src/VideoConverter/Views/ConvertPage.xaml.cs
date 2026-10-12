@@ -15,6 +15,7 @@ public sealed partial class ConvertPage : Page
 {
     private const double SettingsBreakpoint = 1100;
     private const double SettingsColumnWidth = 372;
+    private const int SettingsRowIndex = 4;
 
     private static readonly string[] VideoExtensions =
     {
@@ -75,6 +76,10 @@ public sealed partial class ConvertPage : Page
     /// <summary>
     /// 断点不能靠 VisualStateManager/AdaptiveTrigger 放在 ScrollViewer 内的网格上（实测不触发），
     /// 这里直接读 XamlRoot 宽度（DIP、窗口基准），每次尺寸变化都重算。
+    ///
+    /// 宽度只决定"谁来滚"：
+    /// - 宽窗：整页不滚，队列列表与设置面板参数区各自滚动，主操作常驻面板底部；
+    /// - 窄窗：整页滚，两处内部滚动关掉（避免嵌套滚动抢滚轮），设置面板落到第 5 行整宽展示。
     /// </summary>
     private void ApplyBreakpoint()
     {
@@ -85,12 +90,29 @@ public sealed partial class ConvertPage : Page
         }
 
         var singleColumn = width < SettingsBreakpoint;
+
+        // 列：窄窗收掉右列，面板换到左列第 5 行整宽展示
         SettingsColumn.Width = singleColumn ? new GridLength(0) : new GridLength(SettingsColumnWidth);
         Grid.SetColumn(SettingsPanel, singleColumn ? 0 : 1);
-        Grid.SetRow(SettingsPanel, singleColumn ? 2 : 1);
+        Grid.SetRow(SettingsPanel, singleColumn ? SettingsRowIndex : 1);
+        Grid.SetRowSpan(SettingsPanel, singleColumn ? 1 : 3);
 
         // 单列时消掉列间距，否则左列右侧会留下一条空隙
         ConvertLayout.ColumnSpacing = singleColumn ? 0 : 20;
+
+        // 行：宽窗队列区吃满剩余高度（列表自己滚），窄窗回到 Auto 交给整页滚动
+        QueueRow.Height = singleColumn ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
+
+        PageScroll.VerticalScrollMode = singleColumn ? ScrollMode.Enabled : ScrollMode.Disabled;
+        PageScroll.VerticalScrollBarVisibility =
+            singleColumn ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
+
+        var innerMode = singleColumn ? ScrollMode.Disabled : ScrollMode.Auto;
+        var innerBar = singleColumn ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
+        ScrollViewer.SetVerticalScrollMode(QueueList, innerMode);
+        ScrollViewer.SetVerticalScrollBarVisibility(QueueList, innerBar);
+        ScrollViewer.SetVerticalScrollMode(SettingsScroll, innerMode);
+        ScrollViewer.SetVerticalScrollBarVisibility(SettingsScroll, innerBar);
     }
 
     private void OnDragOverChanged(bool active)
@@ -129,6 +151,18 @@ public sealed partial class ConvertPage : Page
         }
     }
 
+    /// <summary>
+    /// 行尾 ▼/▲：只翻这一行的展开状态，不碰选中项——用户可能同时展开好几行做对比。
+    /// 选中与展开的联动只发生在"切换选中项"时（见 MainViewModel.OnSelectedItemChanged）。
+    /// </summary>
+    private void ExpandToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: QueueItem item })
+        {
+            item.IsExpanded = !item.IsExpanded;
+        }
+    }
+
     /// <summary>行内"恢复继承"：清掉该项的两项覆盖，重新跟随右侧面板。</summary>
     private void ResetOverrideButton_Click(object sender, RoutedEventArgs e)
     {
@@ -150,7 +184,7 @@ public sealed partial class ConvertPage : Page
         }
 
         // 缩略图是按钮，会把点击从行选中上截走；这里先补上选中，
-        // 让"点哪个文件，下方详情/预览就跟着变"成立，再打开放大视图。
+        // 让行高亮与右侧面板「缩略图时间点」都切到这一项，再打开放大视图。
         ViewModel.SelectedItem = item;
 
         var path = item.ThumbnailPath;

@@ -206,8 +206,11 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private QueueItem? _selectedItem;
 
-    /// <summary>上一个选中项：SelectedItem 变更时用来收起它的行内详情区（IsCurrent）。</summary>
-    private QueueItem? _currentItem;
+    /// <summary>
+    /// 是否有选中项：驱动右侧面板「缩略图时间点 / 重新截取」的显隐——
+    /// 这两个控件作用于选中项，空态下留着只会是不可用的控件。
+    /// </summary>
+    public bool HasSelectedItem => SelectedItem is not null;
 
     [ObservableProperty]
     private string _selectedContainer = ".mp4";
@@ -221,10 +224,6 @@ public sealed partial class MainViewModel : ObservableObject
 
     public IReadOnlyList<VideoEncoderChoice> AvailableEncoders =>
         EncoderCatalog.AllowedEncoders(SelectedContainer);
-
-
-    /// <summary>是否有选中队列项（驱动"移除"按钮启用状态）。</summary>
-    public bool HasSelectedItem => SelectedItem is not null;
 
     /// <summary>是否允许重新探测（探测中禁用）。</summary>
     public bool CanReprobe => !IsProbing;
@@ -444,10 +443,6 @@ public sealed partial class MainViewModel : ObservableObject
         foreach (var item in Queue.Where(i => i.State == QueueItemState.Pending))
         {
             item.UpdateSettings(settings, _queue.ResolveOutputPathFor(item.InputPath, settings, item.Id));
-            if (SelectedItem == item)
-            {
-                OutputPathText = item.OutputPath;
-            }
         }
     }
 
@@ -566,19 +561,11 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private Brush _parameterSummaryBrush = NormalTextBrush;
 
-    // ---- 媒体信息（展示选中队列项） ----
-    [ObservableProperty] private string _fileName = "尚未选择文件";
-    [ObservableProperty] private string _fileSizeText = "-";
-    [ObservableProperty] private string _containerText = "-";
-    [ObservableProperty] private string _durationText = "-";
-    [ObservableProperty] private string _resolutionText = "-";
-    [ObservableProperty] private string _frameRateText = "-";
-    [ObservableProperty] private string _videoCodecText = "-";
-    [ObservableProperty] private string _audioCodecText = "-";
-    [ObservableProperty] private string _audioChannelsText = "-";
-    [ObservableProperty] private string _bitRateText = "-";
+    // ---- 媒体信息 ----
+    //
+    // 媒体信息现在展示在队列行的展开区里，字段绑定所属 QueueItem（可多行同时展开），
+    // 所以这里只剩「重新截取」要用的时间点；选中项变了就把时间点切到那一项的默认起点。
     [ObservableProperty] private double _thumbnailPosition;
-    [ObservableProperty] private string _outputPathText = "-";
 
     // ---- 参数变更联动 ----
 
@@ -694,39 +681,26 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnSelectedItemChanged(QueueItem? value)
     {
-        // 行内详情区只跟随当前选中项：先收起旧行，再展开新行（同一项时不重复通知）
-        if (!ReferenceEquals(_currentItem, value))
-        {
-            if (_currentItem is not null)
-            {
-                _currentItem.IsCurrent = false;
-            }
+        OnPropertyChanged(nameof(HasSelectedItem));
 
-            _currentItem = value;
-            if (value is not null)
-            {
-                value.IsCurrent = true;
-            }
+        // 选中的那一行自动展开媒体信息（展开区由 IsExpanded 驱动，不跟选中绑定）。
+        // 取消选中不清除展开状态，所以多行可以同时展开，由行尾 ▼/▲ 单独收起。
+        // 入队 / 启动恢复两条路径会在选中之后显式收起，避免"刚加进来就撑高一行"。
+        if (value is not null)
+        {
+            value.IsExpanded = true;
         }
 
-        OnPropertyChanged(nameof(HasSelectedItem));
         if (value is null)
         {
-            ClearMediaInfo();
             return;
         }
 
-        OutputPathText = value.OutputPath;
+        // 时间点用与后台截帧同一条默认规则（10% 时长，不早于 1 秒），作为右侧面板「重新截取」的起点；
+        // 行内缩略图本身由后台管线在入队 / 启动恢复时备好（缓存优先），选中哪一行都不再隐式重截。
         if (value.Info is not null)
         {
-            ApplyMediaInfo(value.Info);
-            // 时间点用与后台截帧同一条默认规则（10% 时长，不早于 1 秒），作为「重新截取」的起点；
-            // 行内缩略图本身由后台管线在入队 / 启动恢复时备好（缓存优先），选中哪一行都不再隐式重截。
             ThumbnailPosition = Math.Round(DefaultThumbnailPosition(value.Info.Duration).TotalSeconds, 2);
-        }
-        else
-        {
-            ClearMediaInfo();
         }
     }
 
@@ -753,10 +727,6 @@ public sealed partial class MainViewModel : ObservableObject
         {
             var output = _queue.ResolveOutputPathFor(item.InputPath, settings, item.Id);
             item.UpdateSettings(settings, output);
-            if (SelectedItem == item)
-            {
-                OutputPathText = item.OutputPath;
-            }
         }
     }
 
@@ -873,7 +843,10 @@ public sealed partial class MainViewModel : ObservableObject
             TrackItem(item);
             Queue.Add(item);
             EnsureQueueThumbnail(item);
+            // 入队只"选中"不"展开"：SelectedItem ??= item 会顺带把展开态打开（见 OnSelectedItemChanged），
+            // 新加进来的这一行必须显式收起，否则一次加 5 个文件首屏就被撑高一行。
             SelectedItem ??= item;
+            item.IsExpanded = false;
             added++;
         }
 
@@ -1162,6 +1135,12 @@ public sealed partial class MainViewModel : ObservableObject
     private void RebuildQueueFromCore()
     {
         var selectedId = SelectedItem?.Id;
+
+        // 重建会先清空集合：ListView 的 SelectedItem 随之中断（选中项短暂变 null 再变回来），
+        // 于是"新选中项自动展开"会对重新选中的那一行再触发一次。把现有展开集合记下来还原，
+        // 避免上移 / 下移把一个用户没碰过的行撑开（也避免收起用户已经展开的行）。
+        var expanded = Queue.Where(i => i.IsExpanded).Select(i => i.Id).ToHashSet(StringComparer.Ordinal);
+
         Queue.Clear();
         foreach (var item in _queue.Items)
         {
@@ -1169,6 +1148,12 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         SelectedItem = _queue.Items.FirstOrDefault(i => i.Id == selectedId) ?? Queue.FirstOrDefault();
+
+        foreach (var item in Queue)
+        {
+            item.IsExpanded = expanded.Contains(item.Id);
+        }
+
         ScheduleQueueSave();
         RefreshQueueSummary();
     }
@@ -1282,9 +1267,15 @@ public sealed partial class MainViewModel : ObservableObject
             restored++;
         }
 
-        // 恢复后必须选中一项：选中项驱动 QueueItem.IsCurrent，也就是行内详情区的展开；
-        // 没有选中项时详情区（容器/时长/编码等）在重启场景下会静默消失。
+        // 恢复后仍然选中一项（驱动行高亮，以及右侧面板「缩略图时间点」的作用对象）。
         SelectedItem ??= Queue.FirstOrDefault();
+
+        // 展开状态不落盘：重启后整队一律收起，用户自己决定看哪一行的详情。
+        // 放在选中之后，因为选中动作本身会把新选中项展开。
+        foreach (var item in Queue)
+        {
+            item.IsExpanded = false;
+        }
 
         if (restored == 0 && skipped == 0)
         {
@@ -1482,11 +1473,6 @@ public sealed partial class MainViewModel : ObservableObject
             ProgressSummary = $"{item.FileName} · {percent:F0}% · {FormatTimeSpan(p.Processed)} / {FormatTimeSpan(p.Total)}";
         }
 
-        if (SelectedItem == item)
-        {
-            OutputPathText = item.OutputPath;
-        }
-
         OnPropertyChanged(nameof(SelectedCount));
 
         // QueueItem 已实现 INotifyPropertyChanged，无需替换集合项即可刷新列表
@@ -1560,29 +1546,6 @@ public sealed partial class MainViewModel : ObservableObject
 
     // ---- 辅助 ----
 
-    private void ApplyMediaInfo(MediaInfo info)
-    {
-        FileName = Path.GetFileName(info.FilePath);
-        FileSizeText = info.SizeBytes is { } size ? FormatSize(size) : "-";
-        ContainerText = info.ContainerFormat ?? "-";
-        DurationText = info.Duration is { } duration ? FormatTimeSpan(duration) : "-";
-        ResolutionText = info.Width is { } w && info.Height is { } h ? $"{w} x {h}" : "-";
-        FrameRateText = info.FrameRate is { } fps ? $"{fps:0.###} fps" : "-";
-        VideoCodecText = info.VideoCodec ?? "-";
-        AudioCodecText = info.AudioCodec ?? "-";
-        AudioChannelsText = info.AudioChannels?.ToString() ?? "-";
-        BitRateText = info.BitRate is { } br ? $"{br / 1000} kbps" : "-";
-    }
-
-    private void ClearMediaInfo()
-    {
-        FileName = "尚未选择文件";
-        FileSizeText = ContainerText = DurationText = ResolutionText = "-";
-        FrameRateText = VideoCodecText = AudioCodecText = "-";
-        AudioChannelsText = BitRateText = "-";
-        OutputPathText = "-";
-    }
-
     private void SetStatus(string message, bool isError)
     {
         StatusMessage = message;
@@ -1594,12 +1557,6 @@ public sealed partial class MainViewModel : ObservableObject
         _statusTimer.Stop();
         _statusTimer.Start();
     }
-
-    private static string FormatSize(long bytes) =>
-        bytes >= 1024L * 1024 * 1024 ? $"{bytes / 1024d / 1024d / 1024d:F2} GB"
-        : bytes >= 1024 * 1024 ? $"{bytes / 1024d / 1024d:F1} MB"
-        : bytes >= 1024 ? $"{bytes / 1024d:F1} KB"
-        : $"{bytes} B";
 
     private static string FormatTimeSpan(TimeSpan value) =>
         value.TotalHours >= 1 ? value.ToString(@"hh\:mm\:ss") : value.ToString(@"mm\:ss");

@@ -5,228 +5,369 @@
     xmlns:ctl="using:VideoConverter.Controls"
     xmlns:models="using:VideoConverter.Core.Models">
 
-    <!-- 转换工作台：左列（拖放区 + 转换队列，选中行内联展开详情）/ 右列（输出设置面板，372 DIP） -->
+    <!--
+      转换工作台：左列（页头跨两列 → 拖放区 → 队列工具条 → 队列列表）/ 右列（输出设置面板 372 DIP）。
+
+      滚动归属（断点在代码后置 ApplyBreakpoint 里按 XamlRoot 宽度切换，不用 VisualStateManager）：
+        宽窗（>=1100 DIP）：整页不滚；队列列表（3 行）与设置面板参数区各自滚动，
+                            面板底部「开始转换 / 清空队列」固定常驻，不出首屏；
+        窄窗（<1100 DIP）：整页滚；两处内部滚动关闭；设置面板下移到第 5 行单列展示。
+    -->
     <Grid>
-        <ScrollViewer Style="{StaticResource PageScrollViewerStyle}">
+        <ScrollViewer x:Name="PageScroll" Style="{StaticResource PageScrollViewerStyle}">
             <Grid Padding="24,20">
                 <Grid x:Name="ConvertLayout" ColumnSpacing="20" RowSpacing="20">
-                    <!-- 宽度断点（<1100 DIP 单列）在代码后置里按 XamlRoot 宽度切换，见 ConvertPage.xaml.cs -->
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition x:Name="SettingsColumn" Width="372" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <!-- 拖放区 -->
                         <RowDefinition Height="Auto" />
+                        <!-- 队列工具条 -->
+                        <RowDefinition Height="Auto" />
+                        <!-- 队列列表：宽窗吃满剩余高度并自己滚；窄窗由代码后置改成 Auto -->
+                        <RowDefinition x:Name="QueueRow" Height="*" />
+                        <!-- 窄窗下设置面板的落点；宽窗空置 -->
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <!-- 页头：横跨两列（原型中正文标题在网格之上） -->
+                    <!-- 页头：横跨两列 -->
                     <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Spacing="6">
                         <TextBlock Text="视频转换" Style="{StaticResource PageTitleStyle}" />
                         <TextBlock Style="{StaticResource PageSubtitleStyle}"
                                    Text="添加视频，选择输出设置，一键转换。支持 MP4、MKV、AVI、MOV、WebM 及音频提取。" />
                     </StackPanel>
 
-                    <!-- 左列 -->
-                    <StackPanel Grid.Row="1" Grid.Column="0" Spacing="20">
-
-                        <!-- 拖放区：整块可点（复用选择器），拖入窗口时由窗口事件高亮 -->
-                        <Grid MinHeight="150">
-                            <Rectangle x:Name="DropzoneStroke" RadiusX="8" RadiusY="8" StrokeThickness="1.5"
-                                       StrokeDashArray="4 3"
-                                       Stroke="{ThemeResource AppDropzoneStroke}"
-                                       Fill="{ThemeResource AppDropzoneFill}" />
-                            <Button x:Name="DropzoneButton" Background="Transparent" BorderThickness="0"
-                                    CornerRadius="8" Padding="0"
-                                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                                    Click="PickFileButton_Click"
-                                    PointerEntered="DropzoneButton_PointerEntered"
-                                    PointerExited="DropzoneButton_PointerExited"
-                                    AutomationProperties.Name="选择视频文件" AutomationProperties.AutomationId="PickFileButton">
-                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-                                    <FontIcon Glyph="&#xE714;" FontSize="44"
-                                              Foreground="{ThemeResource AccentFillColorDefaultBrush}"
-                                              HorizontalAlignment="Center" />
-                                    <TextBlock Text="将视频文件拖到这里" FontSize="15" FontWeight="SemiBold"
-                                               HorizontalAlignment="Center" />
-                                    <TextBlock FontSize="13" Foreground="{ThemeResource AppSubtleText}"
-                                               HorizontalAlignment="Center" TextAlignment="Center">
-                                        <Run Text="或 " />
-                                        <Run Text="点击选择文件" FontWeight="SemiBold"
-                                             Foreground="{ThemeResource AccentFillColorDefaultBrush}" />
-                                        <Run Text="，支持批量添加 MP4 / MKV / AVI / MOV / WebM" />
-                                    </TextBlock>
-                                </StackPanel>
-                            </Button>
-                        </Grid>
-
-                        <!-- 转换队列 -->
-                        <StackPanel Spacing="10">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <FontIcon Grid.Column="0" Glyph="&#xE8FD;" FontSize="18" Margin="0,0,8,0"
+                    <!-- 拖放区：整块可点（复用选择器），拖入窗口时由窗口事件高亮 -->
+                    <Grid Grid.Row="1" Grid.Column="0" MinHeight="150">
+                        <Rectangle x:Name="DropzoneStroke" RadiusX="8" RadiusY="8" StrokeThickness="1.5"
+                                   StrokeDashArray="4 3"
+                                   Stroke="{ThemeResource AppDropzoneStroke}"
+                                   Fill="{ThemeResource AppDropzoneFill}" />
+                        <Button x:Name="DropzoneButton" Background="Transparent" BorderThickness="0"
+                                CornerRadius="8" Padding="0"
+                                HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                Click="PickFileButton_Click"
+                                PointerEntered="DropzoneButton_PointerEntered"
+                                PointerExited="DropzoneButton_PointerExited"
+                                AutomationProperties.Name="选择视频文件" AutomationProperties.AutomationId="PickFileButton">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                                <FontIcon Glyph="&#xE714;" FontSize="44"
                                           Foreground="{ThemeResource AccentFillColorDefaultBrush}"
-                                          VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="1" Text="转换队列" Style="{StaticResource CardTitleStyle}"
-                                           VerticalAlignment="Center" />
-                                <CheckBox Grid.Column="2" Content="全选" Margin="12,0,0,0" MinWidth="0" Padding="6,0,10,0"
-                                          VerticalAlignment="Center" FontSize="12"
-                                          IsChecked="{x:Bind ViewModel.AllSelected, Mode=TwoWay}"
-                                          AutomationProperties.Name="全选队列项" AutomationProperties.AutomationId="SelectAllCheck" />
-                                <Button Grid.Column="4" Style="{StaticResource SubtleButtonStyle}" Margin="0,0,8,0"
-                                        Click="PickFileButton_Click"
-                                        AutomationProperties.Name="添加文件" AutomationProperties.AutomationId="AddFilesButton">
-                                    <StackPanel Orientation="Horizontal" Spacing="5">
-                                        <FontIcon Glyph="&#xE710;" FontSize="12" />
-                                        <TextBlock Text="添加文件" />
-                                    </StackPanel>
-                                </Button>
-                                <TextBlock Grid.Column="5" Text="{x:Bind ViewModel.QueueCountText, Mode=OneWay}"
-                                           Style="{StaticResource CaptionTextStyle}" VerticalAlignment="Center" />
-                            </Grid>
+                                          HorizontalAlignment="Center" />
+                                <TextBlock Text="将视频文件拖到这里" FontSize="15" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" />
+                                <TextBlock FontSize="13" Foreground="{ThemeResource AppSubtleText}"
+                                           HorizontalAlignment="Center" TextAlignment="Center">
+                                    <Run Text="或 " />
+                                    <Run Text="点击选择文件" FontWeight="SemiBold"
+                                         Foreground="{ThemeResource AccentFillColorDefaultBrush}" />
+                                    <Run Text="，支持批量添加 MP4 / MKV / AVI / MOV / WebM" />
+                                </TextBlock>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
 
-                            <ListView SelectionMode="Single"
-                                      ItemsSource="{x:Bind ViewModel.Queue, Mode=OneWay}"
-                                      SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"
-                                      ItemContainerStyle="{StaticResource QueueItemContainerStyle}"
-                                      ScrollViewer.VerticalScrollMode="Disabled"
-                                      ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                                      Visibility="{x:Bind ViewModel.QueueEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibilityInverse}}"
-                                      AutomationProperties.Name="转换队列">
-                                <ListView.ItemTemplate>
-                                    <DataTemplate x:DataType="models:QueueItem">
-                                        <Border Background="{ThemeResource AppCardBackground}"
-                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                                BorderThickness="1" CornerRadius="8" Margin="0,0,0,8">
-                                            <Grid Padding="12,14" ColumnSpacing="14">
+                    <!-- 队列工具条 -->
+                    <Grid Grid.Row="2" Grid.Column="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0" Glyph="&#xE8FD;" FontSize="18" Margin="0,0,8,0"
+                                  Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                                  VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="转换队列" Style="{StaticResource CardTitleStyle}"
+                                   VerticalAlignment="Center" />
+                        <CheckBox Grid.Column="2" Content="全选" Margin="12,0,0,0" MinWidth="0" Padding="6,0,10,0"
+                                  VerticalAlignment="Center" FontSize="12"
+                                  IsChecked="{x:Bind ViewModel.AllSelected, Mode=TwoWay}"
+                                  AutomationProperties.Name="全选队列项" AutomationProperties.AutomationId="SelectAllCheck" />
+                        <Button Grid.Column="4" Style="{StaticResource SubtleButtonStyle}" Margin="0,0,8,0"
+                                Click="PickFileButton_Click"
+                                AutomationProperties.Name="添加文件" AutomationProperties.AutomationId="AddFilesButton">
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <FontIcon Glyph="&#xE710;" FontSize="12" />
+                                <TextBlock Text="添加文件" />
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Grid.Column="5" Text="{x:Bind ViewModel.QueueCountText, Mode=OneWay}"
+                                   Style="{StaticResource CaptionTextStyle}" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <!-- 队列列表：自身滚动（宽窗），只有超出时才出滚动条 -->
+                    <ListView x:Name="QueueList" Grid.Row="3" Grid.Column="0"
+                              SelectionMode="Single"
+                              ItemsSource="{x:Bind ViewModel.Queue, Mode=OneWay}"
+                              SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"
+                              ItemContainerStyle="{StaticResource QueueItemContainerStyle}"
+                              ScrollViewer.VerticalScrollMode="Auto"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                              Visibility="{x:Bind ViewModel.QueueEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibilityInverse}}"
+                              AutomationProperties.Name="转换队列">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="models:QueueItem">
+                                <Border Background="{ThemeResource AppCardBackground}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1" CornerRadius="8" Margin="0,0,0,6">
+                                    <!-- 第一层常驻：勾选 / 缩略图 / 文件名 + 概要 + 徽章 / 行尾按钮；
+                                         第二层（IsExpanded）是媒体信息详情，行尾 ▼/▲ 控制。
+                                         垂直内边距与间距按"展开项 <= 200 DIP"倒推，别再加大。 -->
+                                    <Grid Padding="12,8" ColumnSpacing="14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <CheckBox Grid.Row="0" Grid.Column="0" IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
+                                                  MinWidth="0" VerticalAlignment="Center"
+                                                  Margin="0,0,2,0"
+                                                  AutomationProperties.Name="参与转换" />
+
+                                        <!-- 缩略图：真实截帧（后台截好后回填 ThumbnailPath）盖在彩色占位块上；
+                                             帧还没截到时只显示色块 + 时长角标，这是设计中的兜底。
+                                             整块包一层透明按钮：点击放大查看（没有缓存帧时点击无效）。
+                                             时长角标只挂在这一张小图上，展开区大图不再重复。 -->
+                                        <Button Grid.Row="0" Grid.Column="1" Width="96" Height="56" VerticalAlignment="Top"
+                                                Style="{StaticResource SubtleButtonStyle}" Padding="0"
+                                                MinWidth="0" MinHeight="0" CornerRadius="4"
+                                                Click="ShowThumbnailPreviewButton_Click"
+                                                ToolTipService.ToolTip="点击放大查看"
+                                                AutomationProperties.Name="放大查看缩略图"
+                                                AutomationProperties.AutomationId="ThumbnailPreviewButton">
+                                            <Border CornerRadius="4"
+                                                    Background="{ThemeResource LayerFillColorDefaultBrush}">
+                                                <Grid>
+                                                    <FontIcon Glyph="&#xE8B2;" FontSize="28" Foreground="White" Opacity="0.9" />
+                                                    <Image Source="{Binding ThumbnailPath, Mode=OneWay, Converter={StaticResource PathToImageSource}}"
+                                                           Stretch="Uniform" />
+                                                    <Border HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                            Margin="0,0,4,3" Padding="4,0" CornerRadius="3"
+                                                            Background="#8C000000"
+                                                            Visibility="{x:Bind DurationBadgeText, Converter={StaticResource StringToVisibility}, Mode=OneWay}">
+                                                        <TextBlock Text="{x:Bind DurationBadgeText, Mode=OneWay}"
+                                                                   FontSize="10" Foreground="White" />
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+                                        </Button>
+
+                                        <StackPanel Grid.Row="0" Grid.Column="2" Spacing="2" VerticalAlignment="Center">
+                                            <TextBlock Text="{x:Bind FileName, Mode=OneWay}" FontSize="14"
+                                                       FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                                       ToolTipService.ToolTip="{x:Bind InputPath, Mode=OneWay}" />
+                                            <!-- 单个 TextBlock：超宽只末端截断，
+                                                 不会把靠后的元素挤出视野 -->
+                                            <TextBlock Text="{x:Bind MetaLine, Mode=OneWay}" FontSize="12"
+                                                       Foreground="{ThemeResource AppSubtleText}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTipService.ToolTip="{x:Bind MetaLine, Mode=OneWay}" />
+                                            <Grid ColumnSpacing="8">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+                                                    <Border Style="{StaticResource BadgeBorderStyle}"
+                                                        HorizontalAlignment="Left"
+                                                        Background="{x:Bind State, Converter={StaticResource StateToBadgeBrush}, Mode=OneWay}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                                        <FontIcon Glyph="{x:Bind State, Converter={StaticResource StateToGlyph}, Mode=OneWay}"
+                                                                  FontSize="13" VerticalAlignment="Center"
+                                                                  Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}" />
+                                                        <TextBlock Text="{x:Bind StateLabel, Mode=OneWay}" FontSize="12"
+                                                                   FontWeight="SemiBold" VerticalAlignment="Center"
+                                                                   Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}" />
+                                                    </StackPanel>
+                                                </Border>
+                                                    <!-- 参数来源：这一行是逐项覆盖，还是跟随右侧面板 -->
+                                                    <Border Style="{StaticResource BadgeBorderStyle}" Background="{ThemeResource AppAccentSoftBackground}"
+                                                            Visibility="{x:Bind HasOverride, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                                                        <TextBlock Text="已覆盖" FontSize="11" VerticalAlignment="Center"
+                                                                   Foreground="{ThemeResource AppAccentForeground}" />
+                                                    </Border>
+                                                    <Border Style="{StaticResource BadgeBorderStyle}" Background="{ThemeResource AppBadgeNeutralBackground}"
+                                                            Visibility="{x:Bind HasOverride, Mode=OneWay, Converter={StaticResource BoolToVisibilityInverse}}">
+                                                        <TextBlock Text="继承全局" FontSize="11" VerticalAlignment="Center"
+                                                                   Foreground="{ThemeResource AppSubtleText}" />
+                                                    </Border>
+                                                </StackPanel>
+                                                <!-- 失败原因紧跟徽章：危险色、省略号、悬停看全文 -->
+                                                <TextBlock Grid.Column="1" Text="{x:Bind Error, Mode=OneWay}" FontSize="12"
+                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{ThemeResource AppDangerForeground}"
+                                                           Visibility="{x:Bind Error, Converter={StaticResource StringToVisibility}, Mode=OneWay}"
+                                                           ToolTipService.ToolTip="{x:Bind Error, Mode=OneWay}" />
+                                            </Grid>
+                                            <!-- 进度条只在转换中显示（IsNotConverting 取反） -->
+                                            <ProgressBar Style="{StaticResource ThinProgressBarStyle}" Maximum="100"
+                                                         Value="{x:Bind ProgressValue, Mode=OneWay}" Margin="0,3,0,0"
+                                                         Visibility="{x:Bind IsNotConverting, Mode=OneWay, Converter={StaticResource BoolToVisibilityInverse}}" />
+                                        </StackPanel>
+
+                                        <!-- 行尾按钮：展开 ▼/▲ → 上移 → 下移 → 移除。
+                                             单项参数（齿轮）下移到展开区底部，与「输出到 …」同一行。 -->
+                                        <StackPanel Grid.Row="0" Grid.Column="3" Orientation="Horizontal" Spacing="2"
+                                                    VerticalAlignment="Center">
+                                            <Button Style="{StaticResource SubtleIconButtonStyle}" Width="26" Height="26"
+                                                    Click="ExpandToggleButton_Click"
+                                                    ToolTipService.ToolTip="{x:Bind ExpandToggleLabel, Mode=OneWay}"
+                                                    AutomationProperties.Name="{x:Bind ExpandToggleLabel, Mode=OneWay}"
+                                                    AutomationProperties.AutomationId="ExpandToggleButton">
+                                                <Grid>
+                                                    <FontIcon Glyph="&#xE70D;" FontSize="13"
+                                                              Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVisibilityInverse}}" />
+                                                    <FontIcon Glyph="&#xE70E;" FontSize="13"
+                                                              Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                                                </Grid>
+                                            </Button>
+                                            <Button Style="{StaticResource SubtleIconButtonStyle}" Width="26" Height="26"
+                                                    Click="MoveQueueItemUpButton_Click"
+                                                    ToolTipService.ToolTip="上移"
+                                                    AutomationProperties.Name="上移该队列项"
+                                                    AutomationProperties.AutomationId="MoveUpButton">
+                                                <FontIcon Glyph="&#xE74A;" FontSize="13" />
+                                            </Button>
+                                            <Button Style="{StaticResource SubtleIconButtonStyle}" Width="26" Height="26"
+                                                    Click="MoveQueueItemDownButton_Click"
+                                                    ToolTipService.ToolTip="下移"
+                                                    AutomationProperties.Name="下移该队列项"
+                                                    AutomationProperties.AutomationId="MoveDownButton">
+                                                <FontIcon Glyph="&#xE74B;" FontSize="13" />
+                                            </Button>
+                                            <Button Style="{StaticResource DangerHoverIconButtonStyle}"
+                                                    VerticalAlignment="Center"
+                                                    Click="RemoveQueueItemButton_Click"
+                                                    ToolTipService.ToolTip="从队列移除"
+                                                    AutomationProperties.Name="移除该队列项"
+                                                    AutomationProperties.AutomationId="RemoveItemButton">
+                                                <FontIcon Glyph="&#xE711;" FontSize="16" />
+                                            </Button>
+                                        </StackPanel>
+
+                                        <!-- 展开区（IsExpanded，可多行同时展开）：一行两列 —— 120x68 大图 + 3 行 x 2 列技术字段；
+                                             底部一行是输出路径与单项参数入口。目标：展开后整行不超过 200 DIP。 -->
+                                        <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4" Margin="0,4,0,0"
+                                                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                                                BorderThickness="0,1,0,0"
+                                                Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                                            <Grid Padding="0,4,0,0" RowSpacing="4">
                                                 <Grid.RowDefinitions>
                                                     <RowDefinition Height="Auto" />
-                                                    <!-- 第 2 行：选中项的详情区（只有当前项展开，见 IsCurrent） -->
                                                     <RowDefinition Height="Auto" />
                                                 </Grid.RowDefinitions>
 
-                                                <CheckBox Grid.Column="0" IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
-                                                          MinWidth="0" VerticalAlignment="Center"
-                                                          Margin="0,0,2,0"
-                                                          AutomationProperties.Name="参与转换" />
+                                                <Grid Grid.Row="0" ColumnSpacing="12">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="120" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
 
-                                                <!-- 缩略图：真实截帧（后台截好后回填 ThumbnailPath）盖在彩色占位块上；
-                                                     帧还没截到时只显示色块 + 时长角标，这是设计中的兜底。
-                                                     整块包一层透明按钮：点击放大查看（没有缓存帧时点击无效）。
-                                                     时长角标只挂在这一张小图上，详情区大图不再重复。 -->
-                                                <Button Grid.Column="1" Width="96" Height="56" VerticalAlignment="Top"
-                                                        Style="{StaticResource SubtleButtonStyle}" Padding="0"
-                                                        MinWidth="0" MinHeight="0" CornerRadius="4"
-                                                        Click="ShowThumbnailPreviewButton_Click"
-                                                        ToolTipService.ToolTip="点击放大查看"
-                                                        AutomationProperties.Name="放大查看缩略图"
-                                                        AutomationProperties.AutomationId="ThumbnailPreviewButton">
-                                                    <Border CornerRadius="4"
-                                                            Background="{ThemeResource LayerFillColorDefaultBrush}">
-                                                        <Grid>
-                                                            <FontIcon Glyph="&#xE8B2;" FontSize="28" Foreground="White" Opacity="0.9" />
+                                                    <!-- 大图就是行内小图的放大版（同一张缓存帧），点击同样放大查看；
+                                                         竖屏视频按 Uniform 自然留黑边。 -->
+                                                    <Button Grid.Column="0" Width="120" Height="68"
+                                                            VerticalAlignment="Top"
+                                                            Style="{StaticResource SubtleButtonStyle}" Padding="0"
+                                                            MinWidth="0" MinHeight="0" CornerRadius="4"
+                                                            Click="ShowThumbnailPreviewButton_Click"
+                                                            ToolTipService.ToolTip="点击放大查看"
+                                                            AutomationProperties.Name="放大查看缩略图"
+                                                            AutomationProperties.AutomationId="ThumbnailPreviewLargeButton">
+                                                        <Border CornerRadius="4"
+                                                                Background="{ThemeResource LayerFillColorDefaultBrush}">
                                                             <Image Source="{Binding ThumbnailPath, Mode=OneWay, Converter={StaticResource PathToImageSource}}"
                                                                    Stretch="Uniform" />
-                                                            <Border HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                                                    Margin="0,0,4,3" Padding="4,0" CornerRadius="3"
-                                                                    Background="#8C000000"
-                                                                    Visibility="{x:Bind DurationBadgeText, Converter={StaticResource StringToVisibility}, Mode=OneWay}">
-                                                                <TextBlock Text="{x:Bind DurationBadgeText, Mode=OneWay}"
-                                                                           FontSize="10" Foreground="White" />
-                                                            </Border>
-                                                        </Grid>
-                                                    </Border>
-                                                </Button>
+                                                        </Border>
+                                                    </Button>
 
-                                                <StackPanel Grid.Column="2" Spacing="4" VerticalAlignment="Center">
-                                                    <TextBlock Text="{x:Bind FileName, Mode=OneWay}" FontSize="14"
-                                                               FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
-                                                               ToolTipService.ToolTip="{x:Bind InputPath, Mode=OneWay}" />
-                                                    <!-- 单个 TextBlock：超宽只末端截断，
-                                                         不会把靠后的元素挤出视野 -->
-                                                    <TextBlock Text="{x:Bind MetaLine, Mode=OneWay}" FontSize="12"
-                                                               Foreground="{ThemeResource AppSubtleText}"
-                                                               TextTrimming="CharacterEllipsis"
-                                                               ToolTipService.ToolTip="{x:Bind MetaLine, Mode=OneWay}" />
-                                                    <Grid ColumnSpacing="8" Margin="0,2,0,0">
+                                                    <!-- 技术字段：标签 11 弱化、值 12 次级色（时长/分辨率已在概要行，不重复） -->
+                                                    <Grid Grid.Column="1" RowSpacing="4" ColumnSpacing="12"
+                                                          VerticalAlignment="Top">
                                                         <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" MinWidth="40" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" MinWidth="52" />
                                                             <ColumnDefinition Width="*" />
                                                         </Grid.ColumnDefinitions>
-                                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
-                                                            <Border Style="{StaticResource BadgeBorderStyle}"
-                                                                HorizontalAlignment="Left"
-                                                                Background="{x:Bind State, Converter={StaticResource StateToBadgeBrush}, Mode=OneWay}">
-                                                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                                                <FontIcon Glyph="{x:Bind State, Converter={StaticResource StateToGlyph}, Mode=OneWay}"
-                                                                          FontSize="13" VerticalAlignment="Center"
-                                                                          Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}" />
-                                                                <TextBlock Text="{x:Bind StateLabel, Mode=OneWay}" FontSize="12"
-                                                                           FontWeight="SemiBold" VerticalAlignment="Center"
-                                                                           Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}" />
-                                                            </StackPanel>
-                                                        </Border>
-                                                            <!-- 参数来源：这一行是逐项覆盖，还是跟随右侧面板 -->
-                                                            <Border Style="{StaticResource BadgeBorderStyle}" Background="{ThemeResource AppAccentSoftBackground}"
-                                                                    Visibility="{x:Bind HasOverride, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
-                                                                <TextBlock Text="已覆盖" FontSize="11" VerticalAlignment="Center"
-                                                                           Foreground="{ThemeResource AppAccentForeground}" />
-                                                            </Border>
-                                                            <Border Style="{StaticResource BadgeBorderStyle}" Background="{ThemeResource AppBadgeNeutralBackground}"
-                                                                    Visibility="{x:Bind HasOverride, Mode=OneWay, Converter={StaticResource BoolToVisibilityInverse}}">
-                                                                <TextBlock Text="继承全局" FontSize="11" VerticalAlignment="Center"
-                                                                           Foreground="{ThemeResource AppSubtleText}" />
-                                                            </Border>
-                                                        </StackPanel>
-                                                        <!-- 失败原因紧跟徽章：危险色、省略号、悬停看全文 -->
-                                                        <TextBlock Grid.Column="1" Text="{x:Bind Error, Mode=OneWay}" FontSize="12"
-                                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                                                   Foreground="{ThemeResource AppDangerForeground}"
-                                                                   Visibility="{x:Bind Error, Converter={StaticResource StringToVisibility}, Mode=OneWay}"
-                                                                   ToolTipService.ToolTip="{x:Bind Error, Mode=OneWay}" />
-                                                    </Grid>
-                                                    <!-- 进度条只在转换中显示（IsNotConverting 取反） -->
-                                                    <ProgressBar Style="{StaticResource ThinProgressBarStyle}" Maximum="100"
-                                                                 Value="{x:Bind ProgressValue, Mode=OneWay}" Margin="0,4,0,0"
-                                                                 Visibility="{x:Bind IsNotConverting, Mode=OneWay, Converter={StaticResource BoolToVisibilityInverse}}" />
-                                                </StackPanel>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                        </Grid.RowDefinitions>
 
-                                                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="2"
-                                                            VerticalAlignment="Center">
-                                                    <Button Style="{StaticResource SubtleIconButtonStyle}" Width="26" Height="26"
-                                                            Click="MoveQueueItemUpButton_Click"
-                                                            ToolTipService.ToolTip="上移"
-                                                            AutomationProperties.Name="上移该队列项"
-                                                            AutomationProperties.AutomationId="MoveUpButton">
-                                                        <FontIcon Glyph="&#xE74A;" FontSize="13" />
-                                                    </Button>
-                                                    <Button Style="{StaticResource SubtleIconButtonStyle}" Width="26" Height="26"
-                                                            Click="MoveQueueItemDownButton_Click"
-                                                            ToolTipService.ToolTip="下移"
-                                                            AutomationProperties.Name="下移该队列项"
-                                                            AutomationProperties.AutomationId="MoveDownButton">
-                                                        <FontIcon Glyph="&#xE74B;" FontSize="13" />
-                                                    </Button>
+                                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="容器" FontSize="11"
+                                                                   Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Row="0" Grid.Column="1" FontSize="12"
+                                                                   Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Text="{x:Bind ContainerDetailText, Mode=OneWay}" />
+                                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="视频编码" FontSize="11"
+                                                                   Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Row="0" Grid.Column="3" FontSize="12"
+                                                                   Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Text="{x:Bind VideoCodecDetailText, Mode=OneWay}" />
+
+                                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="帧率" FontSize="11"
+                                                                   Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Row="1" Grid.Column="1" FontSize="12"
+                                                                   Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Text="{x:Bind FrameRateDetailText, Mode=OneWay}" />
+                                                        <TextBlock Grid.Row="1" Grid.Column="2" Text="音频编码" FontSize="11"
+                                                                   Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Row="1" Grid.Column="3" FontSize="12"
+                                                                   Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Text="{x:Bind AudioCodecDetailText, Mode=OneWay}" />
+
+                                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="总码率" FontSize="11"
+                                                                   Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Row="2" Grid.Column="1" FontSize="12"
+                                                                   Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Text="{x:Bind BitRateDetailText, Mode=OneWay}" />
+                                                        <TextBlock Grid.Row="2" Grid.Column="2" Text="声道数" FontSize="11"
+                                                                   Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Row="2" Grid.Column="3" FontSize="12"
+                                                                   Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Text="{x:Bind AudioChannelsDetailText, Mode=OneWay}" />
+                                                    </Grid>
+                                                </Grid>
+
+                                                <!-- 底部一行：输出路径（省略号 + 悬停看全文）+ 单项参数入口 -->
+                                                <Grid Grid.Row="1" ColumnSpacing="10">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="输出到" FontSize="11"
+                                                               Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
+                                                    <TextBlock Grid.Column="1" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                               Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center"
+                                                               Text="{x:Bind OutputPath, Mode=OneWay}"
+                                                               ToolTipService.ToolTip="{x:Bind OutputPath, Mode=OneWay}" />
                                                     <!-- 参数覆盖：行内保持只读，避免下拉挤掉文件名与元信息行 -->
-                                                    <Button Style="{StaticResource SubtleIconButtonStyle}" Width="26" Height="26"
+                                                    <Button Grid.Column="2" Style="{StaticResource SubtleIconButtonStyle}"
+                                                            Width="22" Height="22"
                                                             ToolTipService.ToolTip="单独设置这一项的参数"
                                                             AutomationProperties.Name="单独设置该项参数"
                                                             AutomationProperties.AutomationId="OverrideButton">
-                                                        <FontIcon Glyph="&#xE713;" FontSize="13" />
+                                                        <FontIcon Glyph="&#xE713;" FontSize="12" />
                                                         <Button.Flyout>
                                                             <Flyout>
                                                                 <StackPanel Width="248" Spacing="12">
@@ -276,188 +417,41 @@
                                                             </Flyout>
                                                         </Button.Flyout>
                                                     </Button>
-                                                    <Button Style="{StaticResource DangerHoverIconButtonStyle}"
-                                                            VerticalAlignment="Center"
-                                                            Click="RemoveQueueItemButton_Click"
-                                                            ToolTipService.ToolTip="从队列移除"
-                                                            AutomationProperties.Name="移除该队列项">
-                                                        <FontIcon Glyph="&#xE711;" FontSize="16" />
-                                                    </Button>
-                                                </StackPanel>
-
-                                                <!-- 选中项详情区：横跨整行内容宽度，仅当前选中项展开（IsCurrent）。
-                                                     字段取自 MainViewModel 的选中项展示属性，故走经典 Binding +
-                                                     ViewModelLocator——DataTemplate 的 x:Bind 根是 QueueItem。 -->
-                                                <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4" Margin="0,6,0,0"
-                                                        BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
-                                                        BorderThickness="0,1,0,0"
-                                                        Visibility="{x:Bind IsCurrent, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
-                                                    <StackPanel>
-                                                        <!-- 主预览 + 技术字段并排：预览就是行内小图的放大版（同一张缓存帧），
-                                                             点击同样放大查看；右侧字段是第二层级信息——标签 11 弱化、
-                                                             值 12 次级色，不与上方的文件名/概要行抢视线。 -->
-                                                        <Grid ColumnSpacing="12">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="192" />
-                                                                <ColumnDefinition Width="*" />
-                                                            </Grid.ColumnDefinitions>
-
-                                                            <Button Grid.Column="0" Width="192" Height="108"
-                                                                    VerticalAlignment="Top"
-                                                                    Style="{StaticResource SubtleButtonStyle}" Padding="0"
-                                                                    MinWidth="0" MinHeight="0" CornerRadius="4"
-                                                                    Click="ShowThumbnailPreviewButton_Click"
-                                                                    ToolTipService.ToolTip="点击放大查看"
-                                                                    AutomationProperties.Name="放大查看缩略图"
-                                                                    AutomationProperties.AutomationId="ThumbnailPreviewLargeButton">
-                                                                <Border CornerRadius="4"
-                                                                        Background="{ThemeResource LayerFillColorDefaultBrush}">
-                                                                    <Image Source="{Binding ThumbnailPath, Mode=OneWay, Converter={StaticResource PathToImageSource}}"
-                                                                           Stretch="Uniform" />
-                                                                </Border>
-                                                            </Button>
-
-                                                            <StackPanel Grid.Column="1">
-                                                                <Grid Style="{StaticResource SetRowStyle}" ColumnSpacing="10">
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="Auto" MinWidth="46" />
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" MinWidth="46" />
-                                                                        <ColumnDefinition Width="*" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Grid.Column="0" Text="容器格式" FontSize="11"
-                                                                               Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
-                                                                    <TextBlock Grid.Column="1" FontSize="12" Foreground="{ThemeResource AppSubtleText}"
-                                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                                                               Text="{Binding Path=ViewModel.ContainerText, Source={StaticResource ViewModelLocator}}" />
-                                                                    <TextBlock Grid.Column="2" Text="时长" FontSize="11"
-                                                                               Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
-                                                                    <TextBlock Grid.Column="3" FontSize="12" Foreground="{ThemeResource AppSubtleText}"
-                                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                                                               Text="{Binding Path=ViewModel.DurationText, Source={StaticResource ViewModelLocator}}" />
-                                                                </Grid>
-                                                                <Grid Style="{StaticResource SetRowStyle}" ColumnSpacing="10">
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="Auto" MinWidth="46" />
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" MinWidth="46" />
-                                                                        <ColumnDefinition Width="*" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Grid.Column="0" Text="分辨率" FontSize="11"
-                                                                               Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
-                                                                    <TextBlock Grid.Column="1" FontSize="12" Foreground="{ThemeResource AppSubtleText}"
-                                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                                                               Text="{Binding Path=ViewModel.ResolutionText, Source={StaticResource ViewModelLocator}}" />
-                                                                    <TextBlock Grid.Column="2" Text="帧率" FontSize="11"
-                                                                               Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
-                                                                    <TextBlock Grid.Column="3" FontSize="12" Foreground="{ThemeResource AppSubtleText}"
-                                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                                                               Text="{Binding Path=ViewModel.FrameRateText, Source={StaticResource ViewModelLocator}}" />
-                                                                </Grid>
-                                                                <Grid Style="{StaticResource SetRowStyle}" ColumnSpacing="10">
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="Auto" MinWidth="46" />
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" MinWidth="46" />
-                                                                        <ColumnDefinition Width="*" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Grid.Column="0" Text="视频编码" FontSize="11"
-                                                                               Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
-                                                                    <TextBlock Grid.Column="1" FontSize="12" Foreground="{ThemeResource AppSubtleText}"
-                                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                                                               Text="{Binding Path=ViewModel.VideoCodecText, Source={StaticResource ViewModelLocator}}" />
-                                                                    <TextBlock Grid.Column="2" Text="音频编码" FontSize="11"
-                                                                               Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
-                                                                    <TextBlock Grid.Column="3" FontSize="12" Foreground="{ThemeResource AppSubtleText}"
-                                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                                                               Text="{Binding Path=ViewModel.AudioCodecText, Source={StaticResource ViewModelLocator}}" />
-                                                                </Grid>
-                                                                <Grid Style="{StaticResource SetRowStyle}" ColumnSpacing="10">
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="Auto" MinWidth="46" />
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" MinWidth="46" />
-                                                                        <ColumnDefinition Width="*" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Grid.Column="0" Text="声道数" FontSize="11"
-                                                                               Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
-                                                                    <TextBlock Grid.Column="1" FontSize="12" Foreground="{ThemeResource AppSubtleText}"
-                                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                                                               Text="{Binding Path=ViewModel.AudioChannelsText, Source={StaticResource ViewModelLocator}}" />
-                                                                    <TextBlock Grid.Column="2" Text="总码率" FontSize="11"
-                                                                               Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
-                                                                    <TextBlock Grid.Column="3" FontSize="12" Foreground="{ThemeResource AppSubtleText}"
-                                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                                                               Text="{Binding Path=ViewModel.BitRateText, Source={StaticResource ViewModelLocator}}" />
-                                                                </Grid>
-                                                            </StackPanel>
-                                                        </Grid>
-                                                        <Grid Style="{StaticResource SetRowStyle}" ColumnSpacing="12">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="52" />
-                                                                <ColumnDefinition Width="*" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Grid.Column="0" Text="输出路径" FontSize="11"
-                                                                       Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
-                                                            <TextBlock Grid.Column="1" FontSize="13" TextTrimming="CharacterEllipsis"
-                                                                       VerticalAlignment="Center"
-                                                                       Text="{Binding Path=ViewModel.OutputPathText, Source={StaticResource ViewModelLocator}}"
-                                                                       ToolTipService.ToolTip="{Binding Path=ViewModel.OutputPathText, Source={StaticResource ViewModelLocator}}" />
-                                                        </Grid>
-                                                        <Grid ColumnSpacing="6" Padding="0,9,0,0">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="Auto" />
-                                                                <ColumnDefinition Width="90" />
-                                                                <ColumnDefinition Width="Auto" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Grid.Column="0" Text="缩略图时间点" FontSize="11"
-                                                                       Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
-                                                            <ctl:NoWheelNumberBox Grid.Column="1" Minimum="0" SmallChange="1" LargeChange="5"
-                                                                                  SpinButtonPlacementMode="Compact"
-                                                                                  Value="{Binding Path=ViewModel.ThumbnailPosition, Source={StaticResource ViewModelLocator}, Mode=TwoWay}"
-                                                                                  AutomationProperties.Name="缩略图时间点" />
-                                                            <Button Grid.Column="2" Style="{StaticResource SubtleButtonStyle}"
-                                                                    Padding="7,3" FontSize="11"
-                                                                    Command="{Binding Path=ViewModel.CaptureThumbnailCommand, Source={StaticResource ViewModelLocator}}"
-                                                                    ToolTipService.ToolTip="按当前时间点重新截取缩略图"
-                                                                    AutomationProperties.Name="重新截取缩略图"
-                                                                    AutomationProperties.AutomationId="RecaptureButton">
-                                                                <StackPanel Orientation="Horizontal" Spacing="4">
-                                                                    <FontIcon Glyph="&#xE72C;" FontSize="11" />
-                                                                    <TextBlock Text="重新截取" />
-                                                                </StackPanel>
-                                                            </Button>
-                                                        </Grid>
-                                                    </StackPanel>
-                                                </Border>
+                                                </Grid>
                                             </Grid>
                                         </Border>
-                                    </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
 
-                            <!-- 空态 -->
-                            <Grid MinHeight="120"
-                                  Visibility="{x:Bind ViewModel.QueueEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
-                                <Rectangle RadiusX="8" RadiusY="8" StrokeThickness="1" StrokeDashArray="4 3"
-                                           Stroke="{ThemeResource AppDropzoneStroke}" />
-                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="4">
-                                    <FontIcon Glyph="&#xE714;" FontSize="36" Opacity="0.7" HorizontalAlignment="Center" />
-                                    <TextBlock Text="队列为空" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center"
-                                               Foreground="{ThemeResource AppSubtleText}" />
-                                    <TextBlock Text="将视频拖入上方区域，或点击添加文件" FontSize="12" HorizontalAlignment="Center"
-                                               Foreground="{ThemeResource AppSubtleText}" />
-                                </StackPanel>
-                            </Grid>
+                    <!-- 空态：与列表同处第 4 行、顶对齐，不滚动也不撑高 -->
+                    <Grid Grid.Row="3" Grid.Column="0" MinHeight="120" VerticalAlignment="Top"
+                          Visibility="{x:Bind ViewModel.QueueEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                        <Rectangle RadiusX="8" RadiusY="8" StrokeThickness="1" StrokeDashArray="4 3"
+                                   Stroke="{ThemeResource AppDropzoneStroke}" />
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="4">
+                            <FontIcon Glyph="&#xE714;" FontSize="36" Opacity="0.7" HorizontalAlignment="Center" />
+                            <TextBlock Text="队列为空" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center"
+                                       Foreground="{ThemeResource AppSubtleText}" />
+                            <TextBlock Text="将视频拖入上方区域，或点击添加文件" FontSize="12" HorizontalAlignment="Center"
+                                       Foreground="{ThemeResource AppSubtleText}" />
                         </StackPanel>
+                    </Grid>
 
-                    </StackPanel>
-
-                    <!-- 右列：输出设置面板（粘性置顶：VerticalAlignment=Top） -->
-                    <Border x:Name="SettingsPanel" Grid.Row="1" Grid.Column="1" VerticalAlignment="Top"
+                    <!-- 右列：输出设置面板。卡头常驻 → 参数区自己滚 → 主操作常驻底部（窗口再矮也不出首屏） -->
+                    <Border x:Name="SettingsPanel" Grid.Row="1" Grid.RowSpan="3" Grid.Column="1"
+                            VerticalAlignment="Stretch"
                             Style="{StaticResource CardBorderStyle}" Padding="0">
-                        <StackPanel>
-                            <Grid Style="{StaticResource CardHeaderStyle}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" Style="{StaticResource CardHeaderStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -472,172 +466,213 @@
                                            Style="{StaticResource CaptionTextStyle}" VerticalAlignment="Center" />
                             </Grid>
 
-                            <StackPanel Padding="18,4,18,0">
-                                <!-- 输出格式 -->
-                                <Grid Style="{StaticResource SetRowStyle}" Padding="0,9" ColumnSpacing="14">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                        <FontIcon Glyph="&#xE786;" FontSize="16"
-                                                  Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
-                                        <TextBlock Text="输出格式" FontSize="14" VerticalAlignment="Center" />
-                                    </StackPanel>
-                                    <ctl:NoWheelComboBox Grid.Column="1" MinWidth="132" Height="32" FontSize="14"
-                                        ItemsSource="{x:Bind ViewModel.Containers, Mode=OneWay}"
-                                        SelectedItem="{x:Bind ViewModel.SelectedContainer, Mode=TwoWay}"
-                                        AutomationProperties.Name="输出格式">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding Converter={StaticResource ExtensionLabel}}" />
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ctl:NoWheelComboBox>
-                                </Grid>
-
-                                <!-- 质量 -->
-                                <Grid Style="{StaticResource SetRowStyle}" Padding="0,9" ColumnSpacing="14">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                        <FontIcon Glyph="&#xE9E9;" FontSize="16"
-                                                  Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
-                                        <TextBlock Text="质量" FontSize="14" VerticalAlignment="Center" />
-                                    </StackPanel>
-                                    <ctl:NoWheelSlider Grid.Column="1" Width="120" Minimum="0" Maximum="51"
-                                        Value="{x:Bind ViewModel.Crf, Mode=TwoWay}" VerticalAlignment="Center"
-                                        AutomationProperties.Name="质量" />
-                                    <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.Crf, Mode=OneWay}" FontSize="14"
-                                               FontWeight="SemiBold" MinWidth="24" TextAlignment="Right"
-                                               VerticalAlignment="Center" />
-                                </Grid>
-
-                                <!-- 分辨率 + 帧率并排：两个两行式的字段合成一行，面板不再向下长高 -->
-                                <Grid Style="{StaticResource SetRowStyle}" Padding="0,9" ColumnSpacing="14">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" Spacing="6">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <FontIcon Glyph="&#xE7F4;" FontSize="16"
-                                                      Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
-                                            <TextBlock Text="分辨率" FontSize="14" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                        <ctl:NoWheelComboBox HorizontalAlignment="Stretch" Height="32" FontSize="14"
-                                            ItemsSource="{x:Bind ViewModel.ScaleOptions, Mode=OneWay}"
-                                            SelectedItem="{x:Bind ViewModel.SelectedScaleOption, Mode=TwoWay}"
-                                            AutomationProperties.Name="分辨率"
-                                            AutomationProperties.AutomationId="PanelScaleComboBox">
-                                            <ComboBox.ItemTemplate>
-                                                <DataTemplate x:DataType="vm:ScaleOption" xmlns:vm="using:VideoConverter.ViewModels">
-                                                    <TextBlock Text="{Binding Label}" />
-                                                </DataTemplate>
-                                            </ComboBox.ItemTemplate>
-                                        </ctl:NoWheelComboBox>
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1" Spacing="6">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <FontIcon Glyph="&#xE916;" FontSize="16"
-                                                      Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
-                                            <TextBlock Text="帧率" FontSize="14" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                        <ctl:NoWheelComboBox HorizontalAlignment="Stretch" Height="32" FontSize="14"
-                                            ItemsSource="{x:Bind ViewModel.FpsOptions, Mode=OneWay}"
-                                            SelectedItem="{x:Bind ViewModel.SelectedFpsOption, Mode=TwoWay}"
-                                            AutomationProperties.Name="帧率"
-                                            AutomationProperties.AutomationId="PanelFpsComboBox">
-                                            <ComboBox.ItemTemplate>
-                                                <DataTemplate x:DataType="vm:FpsOption" xmlns:vm="using:VideoConverter.ViewModels">
-                                                    <TextBlock Text="{Binding Label}" />
-                                                </DataTemplate>
-                                            </ComboBox.ItemTemplate>
-                                        </ctl:NoWheelComboBox>
-                                    </StackPanel>
-                                </Grid>
-
-                                <!-- 软件编码：当前语义是"强制软件编码"，不是加速开关 -->
-                                <Grid Style="{StaticResource SetRowStyle}" Padding="0,9" ColumnSpacing="14">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <FontIcon Glyph="&#xE945;" FontSize="16"
-                                                      Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
-                                            <TextBlock Text="强制软件编码" FontSize="14" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                        <TextBlock Text="忽略硬件探测结果，改用软件编码" FontSize="11"
-                                                   Foreground="{ThemeResource AppSubtleText}" />
-                                    </StackPanel>
-                                    <ToggleSwitch Grid.Column="1" OnContent="" OffContent="" MinWidth="0"
-                                                  IsOn="{x:Bind ViewModel.ForceSoftware, Mode=TwoWay}"
-                                                  AutomationProperties.Name="强制软件编码" />
-                                </Grid>
-
-                                <!-- 输出目录 -->
-                                <Grid Style="{StaticResource SetRowStyle}" Padding="0,9" ColumnSpacing="14">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                        <FontIcon Glyph="&#xE8DA;" FontSize="16"
-                                                  Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
-                                        <TextBlock Text="输出目录" FontSize="14" VerticalAlignment="Center" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                        <Button Style="{StaticResource IconButtonStyle}"
-                                                Foreground="{ThemeResource AccentFillColorDefaultBrush}"
-                                                Command="{x:Bind ViewModel.BrowseOutputDirectoryCommand, Mode=OneWay}"
-                                                ToolTipService.ToolTip="选择输出目录"
-                                                AutomationProperties.Name="选择输出目录"
-                                                AutomationProperties.AutomationId="PanelBrowseOutputDirButton">
-                                            <FontIcon Glyph="&#xE8DA;" FontSize="18" />
-                                        </Button>
-                                        <TextBlock Text="{x:Bind ViewModel.OutputDirectoryDisplay, Mode=OneWay}"
-                                                   Style="{StaticResource CaptionTextStyle}" MaxWidth="200"
-                                                   TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
-                                                   VerticalAlignment="Center"
-                                                   ToolTipService.ToolTip="{x:Bind ViewModel.OutputDirectoryDisplay, Mode=OneWay}" />
-                                    </StackPanel>
-                                </Grid>
-                            </StackPanel>
-
-                            <!-- 高级选项 -->
-                            <Expander HorizontalAlignment="Stretch" AutomationProperties.Name="高级选项">
-                                <Expander.Header>
-                                    <TextBlock Text="高级选项" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{ThemeResource AppSubtleText}" />
-                                </Expander.Header>
-                                <StackPanel Padding="18,0,18,10">
+                            <ScrollViewer x:Name="SettingsScroll" Grid.Row="1"
+                                          VerticalScrollMode="Auto" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Padding="18,4,18,0">
+                                    <!-- 输出格式 -->
                                     <Grid Style="{StaticResource SetRowStyle}" Padding="0,9" ColumnSpacing="14">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="音频码率" FontSize="14" VerticalAlignment="Center" />
-                                        <ctl:NoWheelNumberBox Grid.Column="1" MinWidth="132" Height="32"
-                                            Value="{x:Bind ViewModel.AudioBitrate, Mode=TwoWay}"
-                                            Minimum="32" Maximum="512" SmallChange="16" LargeChange="64"
-                                            SpinButtonPlacementMode="Compact" AutomationProperties.Name="音频码率" />
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <FontIcon Glyph="&#xE786;" FontSize="16"
+                                                      Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
+                                            <TextBlock Text="输出格式" FontSize="14" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <ctl:NoWheelComboBox Grid.Column="1" MinWidth="132" Height="32" FontSize="14"
+                                            ItemsSource="{x:Bind ViewModel.Containers, Mode=OneWay}"
+                                            SelectedItem="{x:Bind ViewModel.SelectedContainer, Mode=TwoWay}"
+                                            AutomationProperties.Name="输出格式">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Converter={StaticResource ExtensionLabel}}" />
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ctl:NoWheelComboBox>
                                     </Grid>
-                                    <Border Background="{ThemeResource LayerFillColorDefaultBrush}" Padding="10,8"
-                                            CornerRadius="4" Margin="0,12,0,0">
-                                        <TextBlock Text="{x:Bind ViewModel.ParameterSummary, Mode=OneWay}" FontSize="12"
-                                                   Foreground="{x:Bind ViewModel.ParameterSummaryBrush, Mode=OneWay}"
-                                                   TextWrapping="Wrap" />
-                                    </Border>
-                                </StackPanel>
-                            </Expander>
 
-                            <!-- 面板操作：整行堆叠 -->
-                            <StackPanel Padding="18,12,18,16" Spacing="8">
+                                    <!-- 质量 -->
+                                    <Grid Style="{StaticResource SetRowStyle}" Padding="0,9" ColumnSpacing="14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <FontIcon Glyph="&#xE9E9;" FontSize="16"
+                                                      Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
+                                            <TextBlock Text="质量" FontSize="14" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <ctl:NoWheelSlider Grid.Column="1" Width="120" Minimum="0" Maximum="51"
+                                            Value="{x:Bind ViewModel.Crf, Mode=TwoWay}" VerticalAlignment="Center"
+                                            AutomationProperties.Name="质量" />
+                                        <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.Crf, Mode=OneWay}" FontSize="14"
+                                                   FontWeight="SemiBold" MinWidth="24" TextAlignment="Right"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+
+                                    <!-- 分辨率 + 帧率并排：两个两行式的字段合成一行，面板不再向下长高 -->
+                                    <Grid Style="{StaticResource SetRowStyle}" Padding="0,9" ColumnSpacing="14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Spacing="6">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <FontIcon Glyph="&#xE7F4;" FontSize="16"
+                                                          Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
+                                                <TextBlock Text="分辨率" FontSize="14" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <ctl:NoWheelComboBox HorizontalAlignment="Stretch" Height="32" FontSize="14"
+                                                ItemsSource="{x:Bind ViewModel.ScaleOptions, Mode=OneWay}"
+                                                SelectedItem="{x:Bind ViewModel.SelectedScaleOption, Mode=TwoWay}"
+                                                AutomationProperties.Name="分辨率"
+                                                AutomationProperties.AutomationId="PanelScaleComboBox">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:ScaleOption" xmlns:vm="using:VideoConverter.ViewModels">
+                                                        <TextBlock Text="{Binding Label}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ctl:NoWheelComboBox>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Spacing="6">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <FontIcon Glyph="&#xE916;" FontSize="16"
+                                                          Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
+                                                <TextBlock Text="帧率" FontSize="14" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <ctl:NoWheelComboBox HorizontalAlignment="Stretch" Height="32" FontSize="14"
+                                                ItemsSource="{x:Bind ViewModel.FpsOptions, Mode=OneWay}"
+                                                SelectedItem="{x:Bind ViewModel.SelectedFpsOption, Mode=TwoWay}"
+                                                AutomationProperties.Name="帧率"
+                                                AutomationProperties.AutomationId="PanelFpsComboBox">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:FpsOption" xmlns:vm="using:VideoConverter.ViewModels">
+                                                        <TextBlock Text="{Binding Label}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ctl:NoWheelComboBox>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- 软件编码：当前语义是"强制软件编码"，不是加速开关 -->
+                                    <Grid Style="{StaticResource SetRowStyle}" Padding="0,9" ColumnSpacing="14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <FontIcon Glyph="&#xE945;" FontSize="16"
+                                                          Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
+                                                <TextBlock Text="强制软件编码" FontSize="14" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <TextBlock Text="忽略硬件探测结果，改用软件编码" FontSize="11"
+                                                       Foreground="{ThemeResource AppSubtleText}" />
+                                        </StackPanel>
+                                        <ToggleSwitch Grid.Column="1" OnContent="" OffContent="" MinWidth="0"
+                                                      IsOn="{x:Bind ViewModel.ForceSoftware, Mode=TwoWay}"
+                                                      AutomationProperties.Name="强制软件编码" />
+                                    </Grid>
+
+                                    <!-- 输出目录 -->
+                                    <Grid Style="{StaticResource SetRowStyle}" Padding="0,9" ColumnSpacing="14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <FontIcon Glyph="&#xE8DA;" FontSize="16"
+                                                      Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
+                                            <TextBlock Text="输出目录" FontSize="14" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <Button Style="{StaticResource IconButtonStyle}"
+                                                    Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                                                    Command="{x:Bind ViewModel.BrowseOutputDirectoryCommand, Mode=OneWay}"
+                                                    ToolTipService.ToolTip="选择输出目录"
+                                                    AutomationProperties.Name="选择输出目录"
+                                                    AutomationProperties.AutomationId="PanelBrowseOutputDirButton">
+                                                <FontIcon Glyph="&#xE8DA;" FontSize="18" />
+                                            </Button>
+                                            <TextBlock Text="{x:Bind ViewModel.OutputDirectoryDisplay, Mode=OneWay}"
+                                                       Style="{StaticResource CaptionTextStyle}" MaxWidth="180"
+                                                       TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                                       VerticalAlignment="Center"
+                                                       ToolTipService.ToolTip="{x:Bind ViewModel.OutputDirectoryDisplay, Mode=OneWay}" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- 缩略图时间点 / 重新截取：从行内详情区移到这里，作用于当前选中的文件。
+                                         没有选中项时整行不显示——空态下留着只会是不可用的控件。 -->
+                                    <Grid Style="{StaticResource SetRowStyle}" Padding="0,9" ColumnSpacing="14"
+                                          Visibility="{x:Bind ViewModel.HasSelectedItem, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <FontIcon Glyph="&#xE8B2;" FontSize="16"
+                                                          Foreground="{ThemeResource AppSubtleText}" VerticalAlignment="Center" />
+                                                <TextBlock Text="缩略图时间点" FontSize="14" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <TextBlock Text="作用于当前选中的文件" FontSize="11"
+                                                       Foreground="{ThemeResource AppSubtleText}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <ctl:NoWheelNumberBox Width="80" Height="32" Minimum="0"
+                                                                  SmallChange="1" LargeChange="5"
+                                                                  SpinButtonPlacementMode="Hidden"
+                                                                  Value="{x:Bind ViewModel.ThumbnailPosition, Mode=TwoWay}"
+                                                                  AutomationProperties.Name="缩略图时间点" />
+                                            <Button Style="{StaticResource SubtleButtonStyle}" Height="32" Padding="9,5"
+                                                    Command="{x:Bind ViewModel.CaptureThumbnailCommand, Mode=OneWay}"
+                                                    ToolTipService.ToolTip="按当前时间点重新截取缩略图"
+                                                    AutomationProperties.Name="重新截取缩略图"
+                                                    AutomationProperties.AutomationId="RecaptureButton">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <FontIcon Glyph="&#xE72C;" FontSize="12" />
+                                                    <TextBlock Text="重新截取" />
+                                                </StackPanel>
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- 高级选项 -->
+                                    <Expander HorizontalAlignment="Stretch" AutomationProperties.Name="高级选项">
+                                        <Expander.Header>
+                                            <TextBlock Text="高级选项" FontSize="14" FontWeight="SemiBold"
+                                                       Foreground="{ThemeResource AppSubtleText}" />
+                                        </Expander.Header>
+                                        <StackPanel Padding="0,0,0,10">
+                                            <Grid Style="{StaticResource SetRowStyle}" Padding="0,9" ColumnSpacing="14">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="音频码率" FontSize="14" VerticalAlignment="Center" />
+                                                <ctl:NoWheelNumberBox Grid.Column="1" MinWidth="132" Height="32"
+                                                    Value="{x:Bind ViewModel.AudioBitrate, Mode=TwoWay}"
+                                                    Minimum="32" Maximum="512" SmallChange="16" LargeChange="64"
+                                                    SpinButtonPlacementMode="Hidden" AutomationProperties.Name="音频码率" />
+                                            </Grid>
+                                            <Border Background="{ThemeResource LayerFillColorDefaultBrush}" Padding="10,8"
+                                                    CornerRadius="4" Margin="0,12,0,0">
+                                                <TextBlock Text="{x:Bind ViewModel.ParameterSummary, Mode=OneWay}" FontSize="12"
+                                                           Foreground="{x:Bind ViewModel.ParameterSummaryBrush, Mode=OneWay}"
+                                                           TextWrapping="Wrap" />
+                                            </Border>
+                                        </StackPanel>
+                                    </Expander>
+                                </StackPanel>
+                            </ScrollViewer>
+
+                            <!-- 主操作常驻：不进滚动区，窗口再矮也留在面板底部 -->
+                            <StackPanel Grid.Row="2" Padding="18,12,18,16" Spacing="8">
                                 <Button Style="{StaticResource LargePrimaryButtonStyle}" HorizontalAlignment="Stretch"
                                         Command="{x:Bind ViewModel.ConvertCommand, Mode=OneWay}"
                                         IsEnabled="{x:Bind ViewModel.CanStartConvert, Mode=OneWay}"
@@ -657,7 +692,7 @@
                                     </StackPanel>
                                 </Button>
                             </StackPanel>
-                        </StackPanel>
+                        </Grid>
                     </Border>
                 </Grid>
             </Grid>
