@@ -4,47 +4,15 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="视频格式转换器">
 
+    <!-- 页标题回到各页内部；窗口只保留导航 + 右下浮层提示 -->
     <Grid AllowDrop="True" DragOver="Root_DragOver" Drop="Root_Drop" DragLeave="Root_DragLeave">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-
-        <Grid Grid.Row="0" Padding="16,10,16,10" Background="{ThemeResource LayerFillColorDefaultBrush}">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <!-- 当前页标题：由 Nav_SelectionChanged 更新；应用名交给 OS 标题栏，不再重复 -->
-            <TextBlock x:Name="HeaderTitle" Text="转换" Style="{StaticResource PageTitleStyle}"
-                       VerticalAlignment="Center" />
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <!-- 紧凑状态药丸：圆点 + 短状态，完整版本/来源/路径走 ToolTip -->
-                <Border CornerRadius="12" Padding="10,4"
-                        Background="{ThemeResource AppCardBackground}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                        ToolTipService.ToolTip="{x:Bind ViewModel.FfmpegStatus, Mode=OneWay}">
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <InfoBadge x:Name="FfmpegBadge" VerticalAlignment="Center"
-                                   Foreground="{x:Bind ViewModel.FfmpegStatusBrush, Mode=OneWay}" />
-                        <TextBlock Text="{x:Bind ViewModel.FfmpegShortStatus, Mode=OneWay}"
-                                   FontSize="12" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Border>
-                <Button Content="获取 ffmpeg" Padding="10,3" FontSize="12"
-                        Visibility="{x:Bind ViewModel.FfmpegWarningVisibility, Mode=OneWay}"
-                        Command="{x:Bind ViewModel.OpenFfmpegDownloadPageCommand, Mode=OneWay}" />
-            </StackPanel>
-        </Grid>
-
-        <NavigationView x:Name="NavView" Grid.Row="1"
+        <NavigationView x:Name="NavView"
                         IsBackButtonVisible="Collapsed"
                         IsSettingsVisible="False"
                         PaneDisplayMode="Auto"
                         CompactModeThresholdWidth="600"
                         ExpandedModeThresholdWidth="1000"
-                        OpenPaneLength="200"
+                        OpenPaneLength="212"
                         SelectionChanged="Nav_SelectionChanged">
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="转换" Tag="Convert" IsSelected="True"
@@ -53,10 +21,10 @@
                         <FontIcon Glyph="&#xE768;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="队列" Tag="Queue"
+                <NavigationViewItem Content="任务列表" Tag="Queue"
                                     AutomationProperties.AutomationId="NavQueue">
                     <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE8A5;" />
+                        <FontIcon Glyph="&#xE8FD;" />
                     </NavigationViewItem.Icon>
                     <NavigationViewItem.InfoBadge>
                         <InfoBadge Value="{x:Bind ViewModel.ActiveQueueCount, Mode=OneWay}"
@@ -71,13 +39,63 @@
                 </NavigationViewItem>
             </NavigationView.MenuItems>
 
+            <!-- 底部状态脚：ffmpeg 就绪状态（窄栏只留图标，宽栏补文案与操作） -->
+            <NavigationView.PaneFooter>
+                <Grid x:Name="FooterRoot" Padding="12,10" ColumnSpacing="8">
+                    <VisualStateManager.VisualStateGroups>
+                        <VisualStateGroup x:Name="FooterStates">
+                            <VisualState x:Name="FooterCompact">
+                                <VisualState.StateTriggers>
+                                    <AdaptiveTrigger MinWindowWidth="0" />
+                                </VisualState.StateTriggers>
+                                <VisualState.Setters>
+                                    <Setter Target="FooterText.Visibility" Value="Collapsed" />
+                                    <Setter Target="FooterActionHost.Visibility" Value="Collapsed" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="FooterExpanded">
+                                <VisualState.StateTriggers>
+                                    <AdaptiveTrigger MinWindowWidth="1000" />
+                                </VisualState.StateTriggers>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateManager.VisualStateGroups>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Grid.Column="0" Glyph="{x:Bind ViewModel.FfmpegStatusGlyph, Mode=OneWay}"
+                              Foreground="{x:Bind ViewModel.FfmpegStatusBrush, Mode=OneWay}"
+                              FontSize="16" VerticalAlignment="Center" />
+                    <TextBlock x:Name="FooterText" Grid.Column="1"
+                               Text="{x:Bind ViewModel.FfmpegShortStatus, Mode=OneWay}"
+                               FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                               ToolTipService.ToolTip="{x:Bind ViewModel.FfmpegStatus, Mode=OneWay}" />
+                    <ContentControl x:Name="FooterActionHost" Grid.Column="2" VerticalAlignment="Center">
+                        <Button Content="获取 ffmpeg" Padding="10,3" FontSize="12"
+                                Visibility="{x:Bind ViewModel.FfmpegWarningVisibility, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.OpenFfmpegDownloadPageCommand, Mode=OneWay}"
+                                AutomationProperties.Name="获取 ffmpeg" />
+                    </ContentControl>
+                </Grid>
+            </NavigationView.PaneFooter>
+
             <Frame x:Name="ContentFrame" />
         </NavigationView>
 
-        <Border Grid.Row="2" Padding="16,8" Background="{ThemeResource LayerFillColorDefaultBrush}">
-            <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" FontSize="12"
-                       TextTrimming="CharacterEllipsis"
-                       Foreground="{x:Bind ViewModel.StatusBrush, Mode=OneWay}" />
+        <!-- 右下浮层提示：不占布局高度、不拦截点击，4 秒后由 ViewModel 收起 -->
+        <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,20,20"
+                MaxWidth="380" Padding="16,12" CornerRadius="4" IsHitTestVisible="False"
+                Background="{ThemeResource AppCardBackground}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                Visibility="{x:Bind ViewModel.StatusVisible, Mode=OneWay}">
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <FontIcon Glyph="{x:Bind ViewModel.StatusGlyph, Mode=OneWay}" FontSize="16"
+                          Foreground="{x:Bind ViewModel.StatusBrush, Mode=OneWay}" VerticalAlignment="Center" />
+                <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" FontSize="13"
+                           Foreground="{x:Bind ViewModel.StatusBrush, Mode=OneWay}" TextWrapping="Wrap" />
+            </StackPanel>
         </Border>
     </Grid>
 </Window>

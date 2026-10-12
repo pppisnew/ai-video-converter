@@ -15,6 +15,15 @@
             <SolidColorBrush x:Key="AppSubtleText" Color="#5C5C5C" />
             <SolidColorBrush x:Key="AppQueueItemSelected" Color="#E9E9F2" />
             <SolidColorBrush x:Key="AppQueueItemSelectedBorder" Color="#8E8EA0" />
+            <SolidColorBrush x:Key="AppDropzoneFill" Color="#CCFFFFFF" />
+            <SolidColorBrush x:Key="AppDropzoneStroke" Color="#29000000" />
+            <SolidColorBrush x:Key="AppProgressTrack" Color="#29000000" />
+            <SolidColorBrush x:Key="AppAccentSoftBackground" Color="#1A0078D4" />
+            <SolidColorBrush x:Key="AppSuccessSoftBackground" Color="#1A0F7B0F" />
+            <SolidColorBrush x:Key="AppDangerSoftBackground" Color="#1AC42B1C" />
+            <SolidColorBrush x:Key="AppDangerForeground" Color="#C42B1C" />
+            <SolidColorBrush x:Key="AppSuccessForeground" Color="#0F7B0F" />
+            <SolidColorBrush x:Key="AppBadgeNeutralBackground" Color="#1A000000" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
             <SolidColorBrush x:Key="AppCardBackground" Color="#1F1F1F" />
@@ -22,6 +31,15 @@
             <SolidColorBrush x:Key="AppSubtleText" Color="#9A9A9A" />
             <SolidColorBrush x:Key="AppQueueItemSelected" Color="#2C2C2C" />
             <SolidColorBrush x:Key="AppQueueItemSelectedBorder" Color="#6B6B6B" />
+            <SolidColorBrush x:Key="AppDropzoneFill" Color="#DB292929" />
+            <SolidColorBrush x:Key="AppDropzoneStroke" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="AppProgressTrack" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="AppAccentSoftBackground" Color="#1A0078D4" />
+            <SolidColorBrush x:Key="AppSuccessSoftBackground" Color="#1A0F7B0F" />
+            <SolidColorBrush x:Key="AppDangerSoftBackground" Color="#1AC42B1C" />
+            <SolidColorBrush x:Key="AppDangerForeground" Color="#E8736A" />
+            <SolidColorBrush x:Key="AppSuccessForeground" Color="#6CCB5F" />
+            <SolidColorBrush x:Key="AppBadgeNeutralBackground" Color="#1AFFFFFF" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
             <SolidColorBrush x:Key="AppCardBackground" Color="{ThemeResource SystemColorWindowColor}" />
@@ -29,6 +47,15 @@
             <SolidColorBrush x:Key="AppSubtleText" Color="{ThemeResource SystemColorGrayTextColor}" />
             <SolidColorBrush x:Key="AppQueueItemSelected" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="AppQueueItemSelectedBorder" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="AppDropzoneFill" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="AppDropzoneStroke" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="AppProgressTrack" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="AppAccentSoftBackground" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AppSuccessSoftBackground" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="AppDangerSoftBackground" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="AppDangerForeground" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="AppSuccessForeground" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="AppBadgeNeutralBackground" Color="{ThemeResource SystemColorWindowColor}" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 
@@ -48,9 +75,172 @@
         <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
     </Style>
 
-    <!-- 页面大标题 -->
+    <!-- 页面大标题（原型 28/600） -->
     <Style x:Key="PageTitleStyle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="22" />
+        <Setter Property="FontSize" Value="28" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- 页头副标题（14 / 次级色） -->
+    <Style x:Key="PageSubtitleStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Foreground" Value="{ThemeResource AppSubtleText}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <!-- 卡片标题（15/600） -->
+    <Style x:Key="CardTitleStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- 说明文字（12 / 次级色，不自动换行） -->
+    <Style x:Key="CaptionTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{ThemeResource AppSubtleText}" />
+    </Style>
+
+    <!-- 卡片头：14/18 内边距 + 底部分隔线 -->
+    <Style x:Key="CardHeaderStyle" TargetType="Grid">
+        <Setter Property="Padding" Value="18,14" />
+        <Setter Property="BorderBrush" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
+    </Style>
+
+    <!-- 设置行：左标签 + 右控件，11 上下内边距 + 底部细分隔线 -->
+    <Style x:Key="SetRowStyle" TargetType="Grid">
+        <Setter Property="Padding" Value="0,11" />
+        <Setter Property="BorderBrush" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
+    </Style>
+
+    <!-- 主按钮（强调色，高 32） -->
+    <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Padding" Value="14,0" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="MinWidth" Value="0" />
+    </Style>
+
+    <!-- 大按钮（高 40，整行主操作/次要操作用） -->
+    <Style x:Key="LargeButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="Height" Value="40" />
+        <Setter Property="Padding" Value="16,0" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="MinWidth" Value="0" />
+    </Style>
+
+    <Style x:Key="LargePrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+        <Setter Property="Height" Value="40" />
+        <Setter Property="Padding" Value="16,0" />
+        <Setter Property="FontSize" Value="15" />
+    </Style>
+
+    <!-- 图标按钮：32x32（行内 30x30），图标 18（行内 16） -->
+    <Style x:Key="IconButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{ThemeResource AppSubtleText}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="RowIconButtonStyle" TargetType="Button" BasedOn="{StaticResource IconButtonStyle}">
+        <Setter Property="Width" Value="30" />
+        <Setter Property="Height" Value="30" />
+    </Style>
+
+    <!-- 行内移除按钮：默认次级灰，悬停/按下转为危险色 -->
+    <Style x:Key="DangerHoverIconButtonStyle" TargetType="Button" BasedOn="{StaticResource RowIconButtonStyle}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <Storyboard>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
+                                            <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource AppDangerSoftBackground}" />
+                                        </ObjectAnimationUsingKeyFrames>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Presenter" Storyboard.TargetProperty="Foreground">
+                                            <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource AppDangerForeground}" />
+                                        </ObjectAnimationUsingKeyFrames>
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <Storyboard>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
+                                            <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource AppDangerSoftBackground}" />
+                                        </ObjectAnimationUsingKeyFrames>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Presenter" Storyboard.TargetProperty="Foreground">
+                                            <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource AppDangerForeground}" />
+                                        </ObjectAnimationUsingKeyFrames>
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <Storyboard>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Presenter" Storyboard.TargetProperty="Foreground">
+                                            <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource AppSubtleText}" />
+                                        </ObjectAnimationUsingKeyFrames>
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <ContentPresenter x:Name="Presenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 状态徽章容器：高 24、全圆角、左右 10 内边距（底色由状态转换器给出） -->
+    <Style x:Key="BadgeBorderStyle" TargetType="Border">
+        <Setter Property="Height" Value="24" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="Padding" Value="10,0" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- 细进度条：高 4、圆角 2、强调色填充 -->
+    <Style x:Key="ThinProgressBarStyle" TargetType="ProgressBar">
+        <Setter Property="Height" Value="4" />
+        <Setter Property="CornerRadius" Value="2" />
+        <Setter Property="Foreground" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+        <Setter Property="Background" Value="{ThemeResource AppProgressTrack}" />
+    </Style>
+
+    <!-- 任务筛选胶囊：普通态（次级灰） / 选中态（强调软底 + 强调色 + 600） -->
+    <Style x:Key="FilterChipButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="Height" Value="30" />
+        <Setter Property="Padding" Value="14,0" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{ThemeResource AppSubtleText}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="FilterChipButtonSelectedStyle" TargetType="Button" BasedOn="{StaticResource FilterChipButtonStyle}">
+        <Setter Property="Background" Value="{ThemeResource AppAccentSoftBackground}" />
+        <Setter Property="Foreground" Value="{ThemeResource AccentFillColorDefaultBrush}" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 

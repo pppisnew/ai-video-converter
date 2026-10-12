@@ -16,12 +16,39 @@ public sealed record EncoderOption(string Label, VideoEncoderChoice Value);
 
 public sealed record ScaleOption(string Label, ResolutionScale Value);
 
+/// <summary>任务列表的筛选条件。</summary>
+public enum TaskFilter
+{
+    All,
+    Converting,
+    Pending,
+    Completed,
+    Failed,
+}
+
 public sealed partial class MainViewModel : ObservableObject
 {
-    private static readonly Brush ReadyBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 16, 124, 65));
-    private static readonly Brush WarningBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 197, 62, 22));
-    private static readonly Brush NormalTextBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 230, 230, 230));
-    private static readonly Brush MutedTextBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 138, 138, 138));
+    // 颜色一律取主题资源：应用跟随系统明暗主题，硬编码的浅色文字在浅色主题下几乎不可见。
+    private static readonly Brush ReadyBrush =
+        ThemeBrush("SystemFillColorSuccessBrush", Windows.UI.Color.FromArgb(255, 16, 124, 65));
+    private static readonly Brush WarningBrush =
+        ThemeBrush("SystemFillColorCriticalBrush", Windows.UI.Color.FromArgb(255, 197, 62, 22));
+    private static readonly Brush NormalTextBrush =
+        ThemeBrush("TextFillColorPrimaryBrush", Windows.UI.Color.FromArgb(255, 27, 27, 27));
+    private static readonly Brush MutedTextBrush =
+        ThemeBrush("TextFillColorSecondaryBrush", Windows.UI.Color.FromArgb(255, 93, 93, 93));
+
+    private static Brush ThemeBrush(string key, Windows.UI.Color fallback)
+    {
+        if (Application.Current?.Resources is { } resources
+            && resources.TryGetValue(key, out var value)
+            && value is Brush brush)
+        {
+            return brush;
+        }
+
+        return new SolidColorBrush(fallback);
+    }
 
     private readonly IFfmpegLocator _locator;
     private readonly IMediaProbeService? _probeService;
@@ -29,11 +56,18 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly IConversionQueue _queue;
     private readonly IEncoderProbeService? _probe;
     private readonly DispatcherQueue _dispatcher;
+    private readonly DispatcherQueueTimer _statusTimer;
 
     public MainViewModel(IFfmpegLocator locator, DispatcherQueue dispatcher)
     {
         _locator = locator;
         _dispatcher = dispatcher;
+
+        // 右下浮层提示：显示后 4 秒自动消失，每条新消息都重新计时（不占布局高度）
+        _statusTimer = _dispatcher.CreateTimer();
+        _statusTimer.Interval = TimeSpan.FromSeconds(4);
+        _statusTimer.IsRepeating = false;
+        _statusTimer.Tick += (_, _) => StatusVisible = Visibility.Collapsed;
 
         var binaries = locator.Locate();
         if (binaries is not null)
@@ -47,6 +81,7 @@ public sealed partial class MainViewModel : ObservableObject
         };
             FfmpegStatus = $"ffmpeg 就绪 · {DescribeSource(binaries.Source)} · {ShortVersion(locator.GetVersion(binaries))}";
             FfmpegStatusBrush = ReadyBrush;
+            FfmpegStatusGlyph = "\uE930";
             FfmpegReady = true;
             FfmpegShortStatus = "ffmpeg 就绪";
         }
@@ -55,6 +90,7 @@ public sealed partial class MainViewModel : ObservableObject
             _queue = new ConversionQueue(new FfmpegConversionService(null!, new FfprobeMediaProbeService(null!)));
             FfmpegStatus = "未找到 ffmpeg · 转换功能不可用";
             FfmpegStatusBrush = WarningBrush;
+            FfmpegStatusGlyph = "\uEA39";
             FfmpegWarningVisibility = Visibility.Visible;
             FfmpegShortStatus = "未找到 ffmpeg";
         }
@@ -82,6 +118,15 @@ public sealed partial class MainViewModel : ObservableObject
     public ObservableCollection<QueueItem> Queue { get; }
 
     public IReadOnlyList<string> Containers { get; }
+
+    /// <summary>关于区展示的应用版本（取自程序集版本）。</summary>
+    public string AppVersionText { get; } = ResolveAppVersion();
+
+    private static string ResolveAppVersion()
+    {
+        var version = typeof(MainViewModel).Assembly.GetName().Version;
+        return version is null ? "版本未知" : $"版本 {version.ToString(3)}";
+    }
 
     [ObservableProperty]
     private QueueItem? _selectedItem;
@@ -138,6 +183,9 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>队列是否为空（驱动空态提示）。</summary>
     public bool QueueEmpty => Queue.Count == 0;
 
+    /// <summary>队列头右侧的计数文案，例如 "3 个文件"。</summary>
+    public string QueueCountText => $"{Queue.Count} 个文件";
+
     /// <summary>是否存在失败任务（驱动重试失败项按钮）。</summary>
     public bool HasFailedItems => Queue.Any(i => i.State == QueueItemState.Failed);
 
@@ -168,6 +216,74 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(SelectedCount))]
     private string _queueSummaryText = "队列为空";
 
+    /// <summary>任务列表统计卡：全部 / 转换中 / 已完成 / 失败。</summary>
+    public int TotalTaskCount => Queue.Count;
+    public int RunningTaskCount => Queue.Count(i => i.State == QueueItemState.Converting);
+    public int CompletedTaskCount => Queue.Count(i => i.State == QueueItemState.Completed);
+    public int FailedTaskCount => Queue.Count(i => i.State == QueueItemState.Failed);
+
+    /// <summary>按当前筛选条件过滤后的任务列表（与 Queue 共享同一批 QueueItem 实例）。</summary>
+    public ObservableCollection<QueueItem> FilteredTasks { get; } = new();
+
+    [ObservableProperty]
+    private TaskFilter _taskFilter = TaskFilter.All;
+
+    partial void OnTaskFilterChanged(TaskFilter value) => ApplyTaskFilter();
+
+    /// <summary>筛选后列表为空（驱动任务列表空态）。</summary>
+    public bool TaskListEmpty => FilteredTasks.Count == 0;
+
+    [RelayCommand]
+    private void SetTaskFilter(string? filter)
+    {
+        if (!string.IsNullOrEmpty(filter) && Enum.TryParse<TaskFilter>(filter, ignoreCase: true, out var parsed))
+        {
+            TaskFilter = parsed;
+        }
+    }
+
+    private bool MatchesTaskFilter(QueueItem item) => TaskFilter switch
+    {
+        TaskFilter.Converting => item.State == QueueItemState.Converting,
+        TaskFilter.Pending => item.State == QueueItemState.Pending,
+        TaskFilter.Completed => item.State == QueueItemState.Completed,
+        TaskFilter.Failed => item.State == QueueItemState.Failed,
+        _ => true,
+    };
+
+    /// <summary>
+    /// 增量同步筛选结果：只增删/移动变化项，避免每次进度刷新都重建集合
+    /// （重建会让任务列表滚动位置与选中态跳回开头）。
+    /// </summary>
+    private void ApplyTaskFilter()
+    {
+        var wanted = Queue.Where(MatchesTaskFilter).ToList();
+
+        for (var i = FilteredTasks.Count - 1; i >= 0; i--)
+        {
+            if (!wanted.Contains(FilteredTasks[i]))
+            {
+                FilteredTasks.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < wanted.Count; i++)
+        {
+            var item = wanted[i];
+            var existing = FilteredTasks.IndexOf(item);
+            if (existing < 0)
+            {
+                FilteredTasks.Insert(i, item);
+            }
+            else if (existing != i)
+            {
+                FilteredTasks.Move(existing, i);
+            }
+        }
+
+        OnPropertyChanged(nameof(TaskListEmpty));
+    }
+
     private int _activeQueueCount;
 
     /// <summary>运行中 + 等待中 的任务数，驱动导航项 InfoBadge。</summary>
@@ -186,30 +302,39 @@ public sealed partial class MainViewModel : ObservableObject
         if (total == 0)
         {
             QueueSummaryText = "队列为空";
-            return;
+            ActiveQueueCount = 0;
+        }
+        else
+        {
+            var parts = new List<string>();
+            var running = Queue.Count(i => i.State == QueueItemState.Converting);
+            var waiting = Queue.Count(i => i.State == QueueItemState.Pending);
+            var done = Queue.Count(i => i.State == QueueItemState.Completed);
+            var failed = Queue.Count(i => i.State == QueueItemState.Failed && i.Error?.Contains("已取消") != true);
+
+            if (running > 0) parts.Add($"转换中 {running}");
+            if (waiting > 0) parts.Add($"等待中 {waiting}");
+            if (done > 0) parts.Add($"已完成 {done}");
+            if (failed > 0) parts.Add($"失败 {failed}");
+            QueueSummaryText = $"共 {total} 项 · " + string.Join(" · ", parts);
+            ActiveQueueCount = running + waiting;
         }
 
-        var running = Queue.Count(i => i.State == QueueItemState.Converting);
-        var waiting = Queue.Count(i => i.State == QueueItemState.Pending);
-        var done = Queue.Count(i => i.State == QueueItemState.Completed);
-        var failed = Queue.Count(i => i.State == QueueItemState.Failed && i.Error?.Contains("已取消") != true);
-
-        var parts = new List<string>();
-        if (running > 0) parts.Add($"转换中 {running}");
-        if (waiting > 0) parts.Add($"等待中 {waiting}");
-        if (done > 0) parts.Add($"已完成 {done}");
-        if (failed > 0) parts.Add($"失败 {failed}");
-        QueueSummaryText = $"共 {total} 项 · " + string.Join(" · ", parts);
-
-        ActiveQueueCount = running + waiting;
         OnPropertyChanged(nameof(QueueBadgeVisibility));
 
         SyncAllSelected();
         OnPropertyChanged(nameof(QueueEmpty));
+        OnPropertyChanged(nameof(QueueCountText));
+        OnPropertyChanged(nameof(TotalTaskCount));
+        OnPropertyChanged(nameof(RunningTaskCount));
+        OnPropertyChanged(nameof(CompletedTaskCount));
+        OnPropertyChanged(nameof(FailedTaskCount));
         OnPropertyChanged(nameof(HasFailedItems));
         OnPropertyChanged(nameof(CanStartConvert));
         OnPropertyChanged(nameof(BatchHintText));
+        ApplyTaskFilter();
     }
+
     [ObservableProperty]
     private int _crf = 23;
 
@@ -225,8 +350,13 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _outputDirectory = string.Empty;
 
+    /// <summary>输出目录的展示文案：为空时说明会与源文件同目录。</summary>
+    public string OutputDirectoryDisplay =>
+        string.IsNullOrWhiteSpace(OutputDirectory) ? "与源文件同目录" : OutputDirectory;
+
     partial void OnOutputDirectoryChanged(string value)
     {
+        OnPropertyChanged(nameof(OutputDirectoryDisplay));
         _queue.OutputDirectory = string.IsNullOrWhiteSpace(value) ? null : value;
         var settings = BuildSettings();
         foreach (var item in Queue.Where(i => i.State == QueueItemState.Pending))
@@ -272,6 +402,10 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private Brush _ffmpegStatusBrush = NormalTextBrush;
 
+    /// <summary>导航底部状态脚图标：就绪=对勾，缺失=错误。</summary>
+    [ObservableProperty]
+    private string _ffmpegStatusGlyph = "\uE930";
+
     [ObservableProperty]
     private Visibility _ffmpegWarningVisibility = Visibility.Collapsed;
 
@@ -308,6 +442,17 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private Brush _statusBrush = NormalTextBrush;
+
+    /// <summary>
+    /// 右下浮层提示的可见性：有消息即显示，4 秒后自动收起。
+    /// 类型为 Visibility 而非 bool，因为 MainWindow 是 Window 根，不能走 x:Bind + 转换器。
+    /// </summary>
+    [ObservableProperty]
+    private Visibility _statusVisible = Visibility.Collapsed;
+
+    /// <summary>提示图标字形（成功/信息与错误各一），与 StatusBrush 同色。</summary>
+    [ObservableProperty]
+    private string _statusGlyph = "\uE930";
 
     [ObservableProperty]
     private Brush _parameterSummaryBrush = NormalTextBrush;
@@ -730,6 +875,36 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void RemoveSelected() => RemoveItem(SelectedItem);
 
+    /// <summary>行内上移 / 下移：直接按队列项 Id 调整顺序，不依赖当前选中项。</summary>
+    public void MoveItemUp(QueueItem? item)
+    {
+        if (item is not null && _queue.MoveUp(item.Id))
+        {
+            RebuildQueueFromCore();
+        }
+    }
+
+    public void MoveItemDown(QueueItem? item)
+    {
+        if (item is not null && _queue.MoveDown(item.Id))
+        {
+            RebuildQueueFromCore();
+        }
+    }
+
+    /// <summary>行内重试单个失败项：重置为等待中，随后由"开始转换"统一执行。</summary>
+    public void RetryItem(QueueItem? item)
+    {
+        if (item is null || item.State != QueueItemState.Failed)
+        {
+            return;
+        }
+
+        item.ResetForRetry();
+        RefreshQueueSummary();
+        SetStatus($"已重新加入 {item.FileName}", false);
+    }
+
     /// <summary>移除单个队列项（列表项上的删除按钮直接调用）。转换中的项不可移除。</summary>
     public void RemoveItem(QueueItem? item)
     {
@@ -989,6 +1164,11 @@ public sealed partial class MainViewModel : ObservableObject
         StatusMessage = message;
         StatusIsError = isError;
         StatusBrush = isError ? WarningBrush : NormalTextBrush;
+        StatusGlyph = isError ? "\uEA39" : "\uE930";
+        StatusVisible = string.IsNullOrEmpty(message) ? Visibility.Collapsed : Visibility.Visible;
+
+        _statusTimer.Stop();
+        _statusTimer.Start();
     }
 
     private static string FormatSize(long bytes) =>

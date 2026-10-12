@@ -64,6 +64,10 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
 
     public string FileName => System.IO.Path.GetFileName(InputPath);
 
+    /// <summary>源文件扩展名（大写、无点），用于列表行的 "原格式 → 目标格式"。</summary>
+    public string SourceFormat =>
+        System.IO.Path.GetExtension(InputPath).TrimStart('.').ToUpperInvariant();
+
     /// <summary>队列项状态的中文展示文本（UI 无关，供列表直接绑定）。</summary>
     public string StateText => State switch
     {
@@ -76,6 +80,41 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
         _ => string.Empty,
     };
 
+    /// <summary>徽章用的短状态文案（等待中 / 转换中 / 已完成 / 失败）。</summary>
+    public string StateLabel => State switch
+    {
+        QueueItemState.Pending => "等待中",
+        QueueItemState.Converting => "转换中",
+        QueueItemState.Completed => "已完成",
+        QueueItemState.Failed => "失败",
+        _ => string.Empty,
+    };
+
+    /// <summary>列表行元信息前缀：大小 · 时长 · 分辨率（信息缺失时给出提示而非空白）。</summary>
+    public string MetaPrefix
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (Info?.SizeBytes is { } size)
+            {
+                parts.Add(FormatSize(size));
+            }
+
+            if (Info?.Duration is { } duration)
+            {
+                parts.Add(FormatTimeSpan(duration));
+            }
+
+            if (Info?.Width is { } width && Info?.Height is { } height)
+            {
+                parts.Add($"{width} x {height}");
+            }
+
+            return parts.Count > 0 ? string.Join(" · ", parts) : "信息不可用";
+        }
+    }
+
     public bool IsCompleted => State == QueueItemState.Completed;
 
     /// <summary>队列项进度条取值：等待中 0%、转换中实时百分比、已完成 100%、失败保持最后值。</summary>
@@ -87,6 +126,25 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
         QueueItemState.Failed => Progress?.Percent ?? 0,
         _ => 0,
     };
+
+    /// <summary>任务行进度百分比文案（"42%"），非转换中为空。</summary>
+    public string ProgressPercentText =>
+        State == QueueItemState.Converting && Progress?.Percent is { } percent
+            ? $"{percent:F0}%"
+            : string.Empty;
+
+    /// <summary>任务行右侧说明：转换中显示已处理/总时长，失败显示错误原因。</summary>
+    public string ProgressDetail => State switch
+    {
+        QueueItemState.Converting => Progress is { } progress
+            ? $"{FormatTimeSpan(progress.Processed)} / {FormatTimeSpan(progress.Total)}"
+            : string.Empty,
+        QueueItemState.Failed => Error ?? "失败",
+        _ => string.Empty,
+    };
+
+    /// <summary>是否失败（驱动行内重试按钮的可见性）。</summary>
+    public bool IsFailed => State == QueueItemState.Failed;
 
     /// <summary>是否未在转换中（驱动单项删除按钮的可见性）。</summary>
     public bool IsNotConverting => State != QueueItemState.Converting;
@@ -132,6 +190,8 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Progress)));
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(StateText)));
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(ProgressValue)));
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(ProgressPercentText)));
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(ProgressDetail)));
     }
 
     public void MarkCompleted(string usedEncoder)
@@ -171,11 +231,21 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
     {
         foreach (var name in new[]
         {
-            nameof(State), nameof(StateText), nameof(IsCompleted), nameof(IsNotConverting), nameof(Progress),
-            nameof(ProgressValue), nameof(Error), nameof(UsedEncoder),
+            nameof(State), nameof(StateText), nameof(StateLabel), nameof(IsCompleted), nameof(IsFailed),
+            nameof(IsNotConverting), nameof(Progress), nameof(ProgressValue), nameof(ProgressPercentText),
+            nameof(ProgressDetail), nameof(Error), nameof(UsedEncoder),
         })
         {
             PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
         }
     }
+
+    private static string FormatSize(long bytes) =>
+        bytes >= 1024L * 1024 * 1024 ? $"{bytes / 1024d / 1024d / 1024d:F2} GB"
+        : bytes >= 1024 * 1024 ? $"{bytes / 1024d / 1024d:F1} MB"
+        : bytes >= 1024 ? $"{bytes / 1024d:F1} KB"
+        : $"{bytes} B";
+
+    private static string FormatTimeSpan(TimeSpan value) =>
+        value.TotalHours >= 1 ? value.ToString(@"hh\:mm\:ss") : value.ToString(@"mm\:ss");
 }

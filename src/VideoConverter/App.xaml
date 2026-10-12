@@ -14,6 +14,9 @@
             <helpers:InverseBoolToBooleanConverter x:Key="InverseBoolToBoolean" />
             <helpers:QueueStateToGlyphConverter x:Key="StateToGlyph" />
             <helpers:QueueStateToBrushConverter x:Key="StateToBrush" />
+            <helpers:QueueStateToBadgeBrushConverter x:Key="StateToBadgeBrush" />
+            <helpers:ExtensionLabelConverter x:Key="ExtensionLabel" />
+            <helpers:TaskFilterToChipStyleConverter x:Key="FilterChipStyle" />
             <helpers:BoolToVisibilityConverter x:Key="BoolToVisibility" />
             <helpers:InverseBoolToVisibilityConverter x:Key="BoolToVisibilityInverse" />
         </ResourceDictionary>

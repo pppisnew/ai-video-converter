@@ -4,197 +4,258 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:models="using:VideoConverter.Core.Models">
 
-    <!-- 统一内容容器：内边距 24/20，宽度等于视口宽度（不设上限，避免宽窗溢出） -->
-    <Grid Padding="24,20" RowSpacing="10">
+    <!-- 任务列表（监控页）：统计卡 + 状态筛选 + 任务行；开始转换在转换页 -->
+    <Grid Padding="24,20" RowSpacing="20">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- 实时汇总（页标题由窗口头部承担） -->
-        <Grid Grid.Row="0">
+        <!-- 页头 -->
+        <StackPanel Grid.Row="0" Spacing="6">
+            <TextBlock Text="任务列表" Style="{StaticResource PageTitleStyle}" />
+            <TextBlock Style="{StaticResource PageSubtitleStyle}"
+                       Text="管理全部转换任务：查看进度、取消当前或重试失败项。" />
+        </StackPanel>
+
+        <!-- 统计卡：宽窗 4 列，窄窗 2 列（断点在代码后置里切换） -->
+        <Grid x:Name="StatGrid" Grid.Row="1" ColumnSpacing="14" RowSpacing="14">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="StatColumn3" Width="*" />
+                <ColumnDefinition x:Name="StatColumn4" Width="*" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.QueueSummaryText, Mode=OneWay}"
-                       Style="{StaticResource SubtleTextStyle}" VerticalAlignment="Center" />
-        </Grid>
-
-        <!-- 主操作：一键开始 + 取消 + 全选 -->
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4">
-            <CheckBox Content="全选"
-                      IsChecked="{x:Bind ViewModel.AllSelected, Mode=TwoWay}"
-                      MinWidth="0" Padding="6,0,10,0" VerticalAlignment="Center" FontSize="12"
-                      AutomationProperties.Name="全选队列项" AutomationProperties.AutomationId="SelectAllCheck" />
-            <Button Style="{StaticResource AccentButtonStyle}" Padding="12,6"
-                    Command="{x:Bind ViewModel.ConvertCommand, Mode=OneWay}"
-                    IsEnabled="{x:Bind ViewModel.CanStartConvert, Mode=OneWay}"
-                    AutomationProperties.Name="开始转换" AutomationProperties.AutomationId="ConvertButton">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <FontIcon Glyph="&#xE768;" FontSize="13" />
-                    <TextBlock Text="开始转换" />
-                </StackPanel>
-            </Button>
-            <Button Style="{StaticResource SubtleButtonStyle}"
-                    Command="{x:Bind ViewModel.CancelCurrentCommand, Mode=OneWay}"
-                    IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay}"
-                    ToolTipService.ToolTip="取消当前任务，队列继续" AutomationProperties.Name="取消当前">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <FontIcon Glyph="&#xE711;" FontSize="12" />
-                    <TextBlock Text="取消当前" />
-                </StackPanel>
-            </Button>
-            <Button Style="{StaticResource SubtleButtonStyle}"
-                    Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                    Command="{x:Bind ViewModel.CancelAllCommand, Mode=OneWay}"
-                    IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay}"
-                    ToolTipService.ToolTip="停止整个队列" AutomationProperties.Name="全部停止">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <FontIcon Glyph="&#xE73B;" FontSize="12" />
-                    <TextBlock Text="全部停止" />
-                </StackPanel>
-            </Button>
-        </StackPanel>
-
-        <!-- 队列管理：排序 / 删除 / 清除 / 重试 -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="4">
-            <Button Style="{StaticResource SubtleIconButtonStyle}"
-                    Command="{x:Bind ViewModel.MoveUpCommand, Mode=OneWay}"
-                    IsEnabled="{x:Bind ViewModel.HasSelectedItem, Mode=OneWay}"
-                    ToolTipService.ToolTip="上移选中项" AutomationProperties.Name="上移" AutomationProperties.AutomationId="MoveUpButton">
-                <FontIcon Glyph="&#xE74A;" FontSize="13" />
-            </Button>
-            <Button Style="{StaticResource SubtleIconButtonStyle}"
-                    Command="{x:Bind ViewModel.MoveDownCommand, Mode=OneWay}"
-                    IsEnabled="{x:Bind ViewModel.HasSelectedItem, Mode=OneWay}"
-                    ToolTipService.ToolTip="下移选中项" AutomationProperties.Name="下移" AutomationProperties.AutomationId="MoveDownButton">
-                <FontIcon Glyph="&#xE74B;" FontSize="13" />
-            </Button>
-            <Button Style="{StaticResource SubtleButtonStyle}"
-                    Command="{x:Bind ViewModel.RemoveSelectedCommand, Mode=OneWay}"
-                    IsEnabled="{x:Bind ViewModel.HasSelectedItem, Mode=OneWay}"
-                    ToolTipService.ToolTip="移除选中队列项" AutomationProperties.Name="移除选中队列项">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <FontIcon Glyph="&#xE711;" FontSize="12" />
-                    <TextBlock Text="移除" />
-                </StackPanel>
-            </Button>
-            <Button Style="{StaticResource SubtleButtonStyle}"
-                    Command="{x:Bind ViewModel.RetryFailedCommand, Mode=OneWay}"
-                    IsEnabled="{x:Bind ViewModel.HasFailedItems, Mode=OneWay}"
-                    ToolTipService.ToolTip="重试全部失败任务" AutomationProperties.Name="重试失败项">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <FontIcon Glyph="&#xE72C;" FontSize="12" />
-                    <TextBlock Text="重试失败项" />
-                </StackPanel>
-            </Button>
-            <Button Style="{StaticResource SubtleButtonStyle}"
-                    Command="{x:Bind ViewModel.ClearCompletedCommand, Mode=OneWay}"
-                    ToolTipService.ToolTip="清除所有已完成任务" AutomationProperties.Name="清除已完成任务">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <FontIcon Glyph="&#xE894;" FontSize="12" />
-                    <TextBlock Text="清除已完成" />
-                </StackPanel>
-            </Button>
-            <Button Style="{StaticResource SubtleButtonStyle}"
-                    Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                    Command="{x:Bind ViewModel.ClearQueueCommand, Mode=OneWay}"
-                    ToolTipService.ToolTip="清空整个队列" AutomationProperties.Name="清空队列" AutomationProperties.AutomationId="ClearQueueButton">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <FontIcon Glyph="&#xE74D;" FontSize="12" />
-                    <TextBlock Text="清空队列" />
-                </StackPanel>
-            </Button>
-        </StackPanel>
-
-        <!-- 进度：仅在运行中显示，空闲时由下方队列摘要充当状态指示 -->
-        <Grid Grid.Row="3" RowSpacing="4"
-              Visibility="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <ProgressBar Grid.Row="0" Value="{x:Bind ViewModel.ProgressPercent, Mode=OneWay}" Maximum="100" Height="6" />
-            <TextBlock Grid.Row="1" Text="{x:Bind ViewModel.ProgressSummary, Mode=OneWay}"
-                       Style="{StaticResource SubtleTextStyle}" TextTrimming="CharacterEllipsis" />
+
+            <Border x:Name="StatAllCard" Grid.Row="0" Grid.Column="0"
+                    Style="{StaticResource CardBorderStyle}" Padding="18,16">
+                <Grid ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8"
+                            Background="{ThemeResource AppAccentSoftBackground}">
+                        <FontIcon Glyph="&#xE8FD;" FontSize="20"
+                                  Foreground="{ThemeResource AccentFillColorDefaultBrush}" />
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="{x:Bind ViewModel.TotalTaskCount, Mode=OneWay}" FontSize="26" FontWeight="SemiBold" />
+                        <TextBlock Text="全部任务" Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border x:Name="StatRunningCard" Grid.Row="0" Grid.Column="1"
+                    Style="{StaticResource CardBorderStyle}" Padding="18,16">
+                <Grid ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8"
+                            Background="{ThemeResource AppAccentSoftBackground}">
+                        <FontIcon Glyph="&#xE768;" FontSize="20"
+                                  Foreground="{ThemeResource AccentFillColorDefaultBrush}" />
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="{x:Bind ViewModel.RunningTaskCount, Mode=OneWay}" FontSize="26" FontWeight="SemiBold" />
+                        <TextBlock Text="转换中" Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border x:Name="StatCompletedCard" Grid.Row="0" Grid.Column="2"
+                    Style="{StaticResource CardBorderStyle}" Padding="18,16">
+                <Grid ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8"
+                            Background="{ThemeResource AppSuccessSoftBackground}">
+                        <FontIcon Glyph="&#xE73E;" FontSize="20"
+                                  Foreground="{ThemeResource AppSuccessForeground}" />
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="{x:Bind ViewModel.CompletedTaskCount, Mode=OneWay}" FontSize="26" FontWeight="SemiBold" />
+                        <TextBlock Text="已完成" Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border x:Name="StatFailedCard" Grid.Row="0" Grid.Column="3"
+                    Style="{StaticResource CardBorderStyle}" Padding="18,16">
+                <Grid ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8"
+                            Background="{ThemeResource AppDangerSoftBackground}">
+                        <FontIcon Glyph="&#xEA39;" FontSize="20"
+                                  Foreground="{ThemeResource AppDangerForeground}" />
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="{x:Bind ViewModel.FailedTaskCount, Mode=OneWay}" FontSize="26" FontWeight="SemiBold" />
+                        <TextBlock Text="失败" Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
         </Grid>
 
-        <!-- 队列列表（卡片化） + 空态提示 -->
-        <Grid Grid.Row="4">
-            <ListView SelectionMode="Single"
-                      ItemsSource="{x:Bind ViewModel.Queue, Mode=OneWay}"
-                      SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"
+        <!-- 状态筛选 + 列表操作 -->
+        <Grid Grid.Row="2" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+                <Button Content="全部" Command="{x:Bind ViewModel.SetTaskFilterCommand}" CommandParameter="All"
+                        Style="{x:Bind ViewModel.TaskFilter, Mode=OneWay, Converter={StaticResource FilterChipStyle}, ConverterParameter=All}"
+                        AutomationProperties.Name="筛选：全部" />
+                <Button Content="转换中" Command="{x:Bind ViewModel.SetTaskFilterCommand}" CommandParameter="Converting"
+                        Style="{x:Bind ViewModel.TaskFilter, Mode=OneWay, Converter={StaticResource FilterChipStyle}, ConverterParameter=Converting}"
+                        AutomationProperties.Name="筛选：转换中" />
+                <Button Content="等待中" Command="{x:Bind ViewModel.SetTaskFilterCommand}" CommandParameter="Pending"
+                        Style="{x:Bind ViewModel.TaskFilter, Mode=OneWay, Converter={StaticResource FilterChipStyle}, ConverterParameter=Pending}"
+                        AutomationProperties.Name="筛选：等待中" />
+                <Button Content="已完成" Command="{x:Bind ViewModel.SetTaskFilterCommand}" CommandParameter="Completed"
+                        Style="{x:Bind ViewModel.TaskFilter, Mode=OneWay, Converter={StaticResource FilterChipStyle}, ConverterParameter=Completed}"
+                        AutomationProperties.Name="筛选：已完成" />
+                <Button Content="失败" Command="{x:Bind ViewModel.SetTaskFilterCommand}" CommandParameter="Failed"
+                        Style="{x:Bind ViewModel.TaskFilter, Mode=OneWay, Converter={StaticResource FilterChipStyle}, ConverterParameter=Failed}"
+                        AutomationProperties.Name="筛选：失败" />
+            </StackPanel>
+            <Button Grid.Column="1" Style="{StaticResource SubtleButtonStyle}" Content="重试失败项"
+                    Command="{x:Bind ViewModel.RetryFailedCommand, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.HasFailedItems, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                    AutomationProperties.Name="重试失败项" />
+            <Button Grid.Column="2" Style="{StaticResource SubtleButtonStyle}" Content="清除已完成"
+                    Command="{x:Bind ViewModel.ClearCompletedCommand, Mode=OneWay}"
+                    AutomationProperties.Name="清除已完成任务" />
+        </Grid>
+
+        <!-- 任务行 -->
+        <Grid Grid.Row="3">
+            <ListView SelectionMode="None"
+                      ItemsSource="{x:Bind ViewModel.FilteredTasks, Mode=OneWay}"
                       ItemContainerStyle="{StaticResource QueueItemContainerStyle}"
-                      AutomationProperties.Name="转换队列">
+                      ScrollViewer.VerticalScrollMode="Disabled"
+                      ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                      AutomationProperties.Name="任务列表">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="models:QueueItem">
-                        <Grid Padding="12,10" ColumnSpacing="10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <CheckBox Grid.Column="0" IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
-                                      MinWidth="0" VerticalAlignment="Center"
-                                      AutomationProperties.Name="参与转换" />
-                            <FontIcon Grid.Column="1"
-                                      Glyph="{x:Bind State, Converter={StaticResource StateToGlyph}, Mode=OneWay}"
-                                      Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}"
-                                      FontSize="14" VerticalAlignment="Center" />
-                            <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="1">
-                                <TextBlock Text="{x:Bind FileName, Mode=OneWay}" TextTrimming="CharacterEllipsis"
-                                           ToolTipService.ToolTip="{x:Bind InputPath, Mode=OneWay}" />
-                                <StackPanel Orientation="Horizontal" Spacing="4">
-                                    <TextBlock Text="→" FontSize="11" Opacity="0.5" />
-                                    <TextBlock Text="{x:Bind TargetSummary, Mode=OneWay}" FontSize="11" Opacity="0.5"
-                                               TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
-                                <TextBlock Text="{x:Bind StateText, Mode=OneWay}" FontSize="12"
-                                           Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}"
-                                           TextTrimming="CharacterEllipsis"
-                                           ToolTipService.ToolTip="{x:Bind Error, Mode=OneWay}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-                                <Button Style="{StaticResource SubtleButtonStyle}" Padding="7,3" FontSize="11"
-                                        Visibility="{x:Bind IsCompleted, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
-                                        Click="RevealOutputButton_Click"
-                                        AutomationProperties.Name="定位输出文件">
+                        <Border Background="{ThemeResource AppCardBackground}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Margin="0,0,0,8" Padding="14">
+                            <Grid ColumnSpacing="14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- 缩略图占位：模型没有逐项缩略图，用同尺寸中性占位 -->
+                                <Border Grid.Column="0" Width="96" Height="56" CornerRadius="4"
+                                        VerticalAlignment="Center"
+                                        Background="{ThemeResource LayerFillColorDefaultBrush}">
+                                    <FontIcon Glyph="&#xE8B2;" FontSize="22" Opacity="0.5" />
+                                </Border>
+
+                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                    <TextBlock Text="{x:Bind FileName, Mode=OneWay}" FontSize="14" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTipService.ToolTip="{x:Bind InputPath, Mode=OneWay}" />
                                     <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <FontIcon Glyph="&#xE8DA;" FontSize="11" />
-                                        <TextBlock Text="定位" />
+                                        <TextBlock Text="{x:Bind MetaPrefix, Mode=OneWay}" FontSize="12"
+                                                   Foreground="{ThemeResource AppSubtleText}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="·" FontSize="12" Foreground="{ThemeResource AppSubtleText}" />
+                                        <TextBlock Text="{x:Bind SourceFormat, Mode=OneWay}" FontSize="12"
+                                                   Foreground="{ThemeResource AppSubtleText}" />
+                                        <TextBlock Text="→" FontSize="12" Foreground="{ThemeResource AppSubtleText}" />
+                                        <TextBlock Text="{x:Bind TargetSummary, Mode=OneWay}" FontSize="12"
+                                                   Foreground="{ThemeResource AppSubtleText}"
+                                                   TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
-                                </Button>
-                                <Button Style="{StaticResource SubtleIconButtonStyle}" Padding="6,3"
-                                        Visibility="{x:Bind IsNotConverting, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
-                                        Click="RemoveItemButton_Click"
-                                        ToolTipService.ToolTip="从队列移除"
-                                        AutomationProperties.Name="移除该队列项">
-                                    <FontIcon Glyph="&#xE711;" FontSize="11" />
-                                </Button>
-                            </StackPanel>
-                            <ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4"
-                                         Value="{x:Bind ProgressValue, Mode=OneWay}" Maximum="100"
-                                         Height="3" Margin="0,6,0,0" />
-                        </Grid>
+                                    <Grid ColumnSpacing="10" Margin="0,5,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" MaxWidth="340" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <ProgressBar Grid.Column="0" Style="{StaticResource ThinProgressBarStyle}"
+                                                     Maximum="100" Value="{x:Bind ProgressValue, Mode=OneWay}"
+                                                     VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{x:Bind ProgressPercentText, Mode=OneWay}"
+                                                   FontSize="12" MinWidth="34" TextAlignment="Right"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{ThemeResource AppSubtleText}" />
+                                        <TextBlock Grid.Column="2" Text="{x:Bind ProgressDetail, Mode=OneWay}"
+                                                   FontSize="12" MinWidth="120" TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}" />
+                                    </Grid>
+                                </StackPanel>
+
+                                <Border Grid.Column="2" Style="{StaticResource BadgeBorderStyle}"
+                                        Background="{x:Bind State, Converter={StaticResource StateToBadgeBrush}, Mode=OneWay}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="{x:Bind State, Converter={StaticResource StateToGlyph}, Mode=OneWay}"
+                                                  FontSize="13" VerticalAlignment="Center"
+                                                  Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}" />
+                                        <TextBlock Text="{x:Bind StateLabel, Mode=OneWay}" FontSize="12"
+                                                   FontWeight="SemiBold" VerticalAlignment="Center"
+                                                   Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}" />
+                                    </StackPanel>
+                                </Border>
+
+                                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="2"
+                                            VerticalAlignment="Center">
+                                    <Button Style="{StaticResource IconButtonStyle}"
+                                            Visibility="{x:Bind IsCompleted, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
+                                            Click="RevealOutputButton_Click"
+                                            ToolTipService.ToolTip="在资源管理器中定位输出文件"
+                                            AutomationProperties.Name="定位输出文件">
+                                        <FontIcon Glyph="&#xE8DA;" FontSize="18" />
+                                    </Button>
+                                    <Button Style="{StaticResource IconButtonStyle}"
+                                            Visibility="{x:Bind IsFailed, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
+                                            Click="RetryItemButton_Click"
+                                            ToolTipService.ToolTip="重新加入等待队列"
+                                            AutomationProperties.Name="重试该任务">
+                                        <FontIcon Glyph="&#xE72C;" FontSize="18" />
+                                    </Button>
+                                    <Button Style="{StaticResource DangerHoverIconButtonStyle}"
+                                            Click="RemoveItemButton_Click"
+                                            ToolTipService.ToolTip="从队列移除"
+                                            AutomationProperties.Name="移除该队列项">
+                                        <FontIcon Glyph="&#xE711;" FontSize="16" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
 
-            <!-- 空态提示（不拦截点击） -->
+            <!-- 空态（不拦截点击） -->
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6" IsHitTestVisible="False"
-                        Visibility="{x:Bind ViewModel.QueueEmpty, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
-                <FontIcon Glyph="&#xE8A5;" FontSize="28" HorizontalAlignment="Center" Opacity="0.4" />
-                <TextBlock Text="队列为空" FontSize="14" HorizontalAlignment="Center" Opacity="0.6" />
-                <TextBlock Text="在转换页选择文件，或把视频拖拽到窗口任意位置" FontSize="12" HorizontalAlignment="Center" Opacity="0.4" />
+                        Visibility="{x:Bind ViewModel.TaskListEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                <FontIcon Glyph="&#xE8FD;" FontSize="36" HorizontalAlignment="Center" Opacity="0.6" />
+                <TextBlock Text="暂无任务" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center"
+                           Foreground="{ThemeResource AppSubtleText}" />
+                <TextBlock Text="当前筛选条件下没有任务，或回到转换页添加视频文件" FontSize="12"
+                           HorizontalAlignment="Center" Foreground="{ThemeResource AppSubtleText}" />
             </StackPanel>
         </Grid>
     </Grid>

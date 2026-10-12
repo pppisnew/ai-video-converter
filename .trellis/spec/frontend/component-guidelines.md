@@ -229,3 +229,48 @@ WinUI 3 的 `ComboBox` 在**未展开**状态下也会响应 `PointerWheelChange
 - 放不下的次要控件不要硬塞在窄列里，让它们单独占一整行（横跨卡片宽度）
 - 验收时用 UIA 读 `BoundingRectangle`，`∞` / 超出窗口右边界都算不可达，
   不能只靠肉眼看截图
+
+### 布局断点：不要用 VisualStateManager / AdaptiveTrigger
+
+**实测**：把 `VisualStateGroup` + `AdaptiveTrigger` 挂在 `ScrollViewer` **内层**元素上时
+触发器不生效——1000 / 800 DIP 下窄布局完全不切换，内容被裁切；同一套 setter 挂在页面
+最外层 Grid 上才生效。这种"有时灵有时不灵"的差异很难在评审时看出来。
+
+**约定**：响应式断点用代码后置实现，确定且可测。
+
+```csharp
+private const double Breakpoint = 1100;
+private const double PanelWidth = 372;
+
+// 构造函数：Loaded += OnPageLoaded; SizeChanged += OnPageSizeChanged;
+private void ApplyBreakpoint()
+{
+    var width = XamlRoot?.Size.Width ?? 0;   // DIP，按窗口宽度判断
+    if (width <= 0) { return; }              // 加载前 XamlRoot 为空，必须兜底
+    var single = width < Breakpoint;
+    PanelColumn.Width = single ? new GridLength(0) : new GridLength(PanelWidth);
+    Grid.SetColumn(Panel, single ? 0 : 1);
+    Grid.SetRow(Panel, single ? 2 : 1);
+    LayoutRoot.ColumnSpacing = single ? 0 : 20;
+}
+```
+
+阈值必须按**窗口宽度**（`XamlRoot.Size.Width`）判断，不要用页面 `ActualWidth`——
+后者已扣掉导航栏宽度，会让断点在 1180 DIP 窗口下提前触发。
+
+### 不要在 ViewModel 里硬编码主题画刷
+
+**教训**：VM 里写死 `Color.FromArgb(255, 230, 230, 230)` 当"常规文字色"，在浅色主题下
+等于白底白字——右下 toast 与状态文字几乎不可见，而看截图评审时容易把它当成"淡雅设计"放过。
+
+**约定**：需要 Brush 时从主题资源解析，只留一个兜底色：
+
+```csharp
+private static Brush ThemeBrush(string key, Color fallback) =>
+    Application.Current.Resources.TryGetValue(key, out var v) && v is Brush b
+        ? b
+        : new SolidColorBrush(fallback);
+
+// 关键键：TextFillColorPrimaryBrush / TextFillColorSecondaryBrush
+//         SystemFillColorCriticalBrush / SystemFillColorSuccessBrush
+```

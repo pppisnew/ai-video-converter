@@ -68,5 +68,18 @@ foreach ($el in $matches) {
     } catch { }
 }
 
+# Expander / ToggleButton 走 ExpandCollapse（媒体信息、高级选项属此类）
+foreach ($el in $matches) {
+    try {
+        $ec = $el.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern) -as [System.Windows.Automation.ExpandCollapsePattern]
+        if ($ec) {
+            $ec.Expand()
+            Write-Output "expanded: $label"
+            Start-Sleep -Milliseconds $WaitMs
+            exit 0
+        }
+    } catch { }
+}
+
 Write-Error "no usable pattern for: $label"
 exit 1

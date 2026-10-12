@@ -76,13 +76,6 @@ public sealed partial class MainWindow : Window
     {
         if (args.SelectedItem is NavigationViewItem item && item.Tag is string tag)
         {
-            HeaderTitle.Text = tag switch
-            {
-                "Queue" => "队列",
-                "Settings" => "设置",
-                _ => "转换",
-            };
-
             var pageType = tag switch
             {
                 "Queue" => typeof(QueuePage),
@@ -118,17 +111,26 @@ public sealed partial class MainWindow : Window
     }
 
     // 拖拽挂在窗口根 Grid 上：任何页面都可直接拖入视频文件
+    /// <summary>窗口级拖拽状态广播：供页面做拖放区高亮（拖放逻辑本身仍留在窗口）。</summary>
+    internal static event Action<bool>? DragOverChanged;
+
     private void Root_DragOver(object sender, DragEventArgs e)
     {
         e.AcceptedOperation = DataPackageOperation.Copy;
         e.DragUIOverride.Caption = "释放以加入队列";
         e.Handled = true;
+        DragOverChanged?.Invoke(true);
     }
 
-    private void Root_DragLeave(object sender, DragEventArgs e) => e.Handled = true;
+    private void Root_DragLeave(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        DragOverChanged?.Invoke(false);
+    }
 
     private async void Root_Drop(object sender, DragEventArgs e)
     {
+        DragOverChanged?.Invoke(false);
         if (!e.DataView.Contains(StandardDataFormats.StorageItems)) { return; }
         var items = await e.DataView.GetStorageItemsAsync();
         var paths = items.OfType<StorageFile>()
