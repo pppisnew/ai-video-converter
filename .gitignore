@@ -1,5 +1,4 @@
-# --- Trellis: local developer identity and per-session runtime state ---
-# (.trellis/.gitignore covers these too; kept here so the intent is explicit)
+# --- Trellis：本地开发者身份与会话运行态 ---
 .trellis/.developer
 .trellis/.current-task
 .trellis/.runtime/
@@ -8,7 +7,20 @@
 .trellis/.session-id
 .trellis/.plan-log
 
-# --- Python ---
+# 任务验收截图（本地产物，不入库）
+.trellis/tasks/*/shots/
+
+# --- .NET 构建输出 ---
+bin/
+obj/
+*.user
+*.suo
+
+# --- 发布输出 ---
+publish/
+publish-*/
+
+# --- Python / Node（Trellis 工具链可能用到）---
 __pycache__/
 *.py[cod]
 .venv/
@@ -16,76 +28,41 @@ venv/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-
-# --- Node ---
 node_modules/
 npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-
-# --- Build output ---
 dist/
 build/
 *.egg-info/
 
-# --- Environment / secrets ---
+# --- 环境变量与密钥 ---
 .env
 .env.*
 !.env.example
 
-# --- OS / editor ---
+# --- 操作系统 / 编辑器 ---
 Thumbs.db
 desktop.ini
 .DS_Store
-# --- .NET build output ---
-bin/
-obj/
-*.user
-*.suo
 
-# --- Bundled ffmpeg binaries (fetched via tools/fetch-ffmpeg.ps1, ~280MB) ---
+# --- 随应用分发的 ffmpeg 二进制（tools/fetch-ffmpeg.ps1 获取，约 280MB）---
 tools/ffmpeg/
 
-# --- Test artifacts ---
+# --- 测试产物 ---
 tests/**/TempMedia/
 
-# --- Publish output ---
-publish/
-publish-*/
-pub-*.txt\ne2e-*.ps1\nuiauto.cs\nui-*.png\ne2e-sample.mp4
-
-# --- Publish output and local test scratch ---
-publish/
-publish-*/
-pub-*.txt
-pub2-*.txt
+# --- 开发期本地脚手架：临时脚本、抓来比对的 JSON、随手截图 ---
 e2e-*.ps1
-t.ps1
-t2.ps1
-uiauto.cs
-ui-*.png
-
-# --- Publish output and local test scratch ---
-publish/
-publish-*/
-pub-*.txt
-pub2-*.txt
-e2e-*.ps1
-t.ps1
-t2.ps1
-uiauto.cs
-ui-*.png
-wheel.cs
-wheel.cs
-
-fbrel.json
-fbtree.json
-rl.json
-
 e2e-sample.mp4
+pub-*.txt
+pub2-*.txt
+t.ps1
+t2.ps1
+uiauto.cs
 tcjob.cs
+wheel.cs
+ui-*.png
 fbrel.json
 fbtree.json
 rl.json
-# 任务验收截图（本地产物，不入库）
-.trellis/tasks/*/shots/

@@ -1,43 +1,92 @@
-﻿# 视频格式转换器（Windows 桌面端）
+# 视频格式转换器（Windows 桌面客户端）
 
-基于 **WinUI 3 + C# + .NET 10** 的 Windows 原生桌面工具：加载视频后展示媒体信息与缩略图，
-通过 **ffmpeg 命令行**完成格式转换，支持批量队列、可调编码参数与硬件加速自动探测。
+用 **WinUI 3 + C#/.NET 10** 写的 Windows 原生桌面应用：把视频拖进来，立刻看到媒体信息与真实缩略图，
+再用 **ffmpeg 命令行**批量转成想要的格式。
+
+构建 0 警告 0 错误 · 单元测试 191/191 通过 · 端到端验收 14 项 + 本轮复跑（见[验证](#验证我自己跑过的)）· Windows 10 1809+ / Windows 11
+
+![转换页](docs/screenshots/convert-page.png)
+
+*转换页：拖放或选择文件入队，选中行内展开媒体信息与真实缩略图；右侧是全局输出参数，单行可逐项覆盖*
+
+## 对笔试要求的逐条回应
+
+| # | 要求 | 本项目的落点 |
+|---|---|---|
+| 1 | 加载视频信息并显示缩略图 | ffprobe 解析 10 项媒体信息（容器/时长/分辨率/帧率/音视频编码/声道/码率/大小）；ffmpeg 抽帧生成**真实缩略图**三种落点：选中行内 192×108 主预览、每个队列行 96×54 真帧、点击放大到 640 宽。取帧时间点默认 `max(1s, 时长×10%)`（避开黑帧/Logo 帧），可手动调整并「重新截取」 |
+| 2 | 用 ffmpeg 命令行转换 | 纯进程调用，**不接 ffmpeg API/绑定库**：`FfmpegConversionService` 以 `-progress pipe:1` 解析进度，参数经 `ArgumentList` 逐项传递（空格/中文路径安全），取消时杀进程树并删除残缺产物 |
+| 3 | 自行做优化 | 批量队列（严格顺序、四态、失败不中断、两级取消）、硬件编码器**真实试编码**探测与自动回退、参数「继承全局 + 逐项覆盖」、队列与设置持久化 + 重启恢复、输出重名自动 `_1/_2`、浅色/深色/跟随系统主题、开源许可说明；详见[功能](#功能) |
+| 4 | 会话总结 md（含开发者决策与反馈） | [总结文档.md](总结文档.md)（仓库根目录）：需求现状、**12 条决策记录（逐条附用户反馈依据）**、全功能测试结果、缺陷证据链、已知限制；分阶段日志见 [docs/session-summary.md](docs/session-summary.md) |
+| 5 | 提交 GitHub | 本仓库，提交按功能 / 修复 / 文档分开，可读 `git log` 回溯每轮改动的动机 |
+| 6 | 界面选型要与「客户端」强相关 | **WinUI 3 + Windows App SDK 2.5.1 的原生 Windows 桌面应用**，`WindowsPackageType=None` 的非打包客户端：原生窗口与标题栏、`NavigationView` 导航、Fluent 视觉与 Mica 材质、系统文件选择对话框、资源管理器定位产物、`%LOCALAPPDATA%` 本地持久化。**界面不含任何 WebView / 浏览器内核**，XAML 直接编译为原生控件 |
+| 7 | 给人用，并且自己测过 | 每个功能都由我本机端到端跑过：真机转码 + ffprobe 校验产物、UI Automation 驱动的自动化用例、无人值守截图验收；做不下去的地方（系统文件对话框等）在[已知限制](#已知限制)里如实标注 |
+
+## 界面
+
+| 任务列表（等待中） | 任务列表（全部完成，深色主题） |
+|---|---|
+| ![任务列表](docs/screenshots/task-list.png) | ![任务列表-完成](docs/screenshots/task-list-complete.png) |
+
+| 设置页 | 深色主题（转换页） |
+|---|---|
+| ![设置页](docs/screenshots/settings-page.png) | ![深色主题](docs/screenshots/dark-theme.png) |
+
+![缩略图放大](docs/screenshots/thumbnail-enlarge.png)
+
+*点击任一缩略图可放大查看（复用缓存帧，不重新调 ffmpeg）*
+
+### 为什么是 WinUI 3
+
+要求里写明「界面选型与客户端关联为 0 就不考虑」，所以选型的第一标准不是我对哪个框架熟，
+而是**这看起来、用起来到底是不是一个 Windows 客户端**：
+
+- **原生窗口与系统集成**：原生标题栏与窗口管理、系统文件选择对话框、资源管理器定位产物、
+  按 DIP 布局自适应系统缩放（150% 下布局仍然正确）、跟随系统深浅色
+- **不选 Electron / Tauri**：为了给 ffmpeg 做个前端却拖进一整套浏览器内核，包体与内存都不划算，
+  界面也会退化成"套壳网页"，正是这条要求想避开的形态
+- **不选 WPF / WinForms**：WinUI 3 是 Windows App SDK 现行的 UI 框架，Fluent 控件、Mica 材质、
+  深浅色主题开箱即用；代价是非打包（unpackaged）模式下坑不少——`dotnet publish` 要自己补
+  `.xbf/.pri`、`AppWindow.Resize` 是物理像素而最小尺寸是 DIP、断点不能靠 `VisualStateManager`
+  挂在 `ScrollViewer` 内层。踩过的坑与规避方式都沉淀在 [.trellis/spec/](.trellis/spec/)
 
 ## 功能
 
-- 批量队列：文件选择（可多选）或拖拽追加，顺序转换；
-  队列项四态（等待中 / 转换中 / 已完成 / 失败），当前任务高亮，完成后可定位输出文件
-- 队列操作：移除单项、清除已完成、重试全部失败项；**单个任务失败不中断后续任务**
-- 取消分两级：`取消当前`（跳过这个文件，队列继续）/ `全部停止`（整个队列停摆）
-- 媒体信息：容器格式、时长、分辨率、帧率、音视频编码、声道数、总码率、文件大小（ffprobe）
-- 缩略图：ffmpeg 抽帧，时间点可调、可重新截取
-- 编码参数：容器格式、视频编码器（自动/H.264/H.265/AV1/VP9）、质量（0-51）、
-  分辨率缩放、音频码率；参数摘要实时显示，可一键重置
-- 硬件加速：启动时真实试编码探测（NVENC → QSV → AMF），不可用自动回退软件编码，
-  结果缓存到 `%LOCALAPPDATA%`，支持"强制软件编码"与"重新探测"
-- ffmpeg 来源三级策略：随包捆绑 → 仓库 tools 目录 → 系统 PATH，界面明示来源与版本
-- 三页导航：**转换**（工作台：拖放 / 队列 / 输出设置 / 开始转换）、
-  **任务列表**（统计卡 + 状态筛选 + 进度与行内操作）、**设置**
-- 逐项参数覆盖：队列行可单独指定**目标格式与质量**，其余参数仍跟随右侧面板；
-  行内以"已覆盖 / 继承全局"标签标明参数来源，可一键"恢复继承"
-- 队列与设置持久化：`%LOCALAPPDATA%\VideoConverter\{settings,queue}.json`；
-  启动恢复未完成任务并一律置「等待中」，绝不自动开跑
-- 主题（浅色 / 深色 / 跟随系统）、转换完成后打开输出文件夹、开源许可说明
+**转换页（工作台）**
 
-## 文档
+- 点击选择（多选）或把文件拖到窗口任意位置入队；重复文件自动去重并提示「跳过 N 个重复文件」
+- 队列项：真实帧缩略图 + 时长角标、`大小 · 分辨率 · 原格式 → 目标格式 · 质量`、
+  四态徽章（等待中 / 转换中 / 已完成 / 失败）、失败原因、细进度条、勾选参与转换、
+  上移/下移/移除、行尾齿轮可对该项单独覆盖目标格式与质量（或「恢复继承」）
+- 选中行内展开媒体信息：真实缩略图 + 文件名 + 一行摘要 + 8 项技术字段（12px 次级色，主次分明）
+- 右侧全局参数：输出格式、质量 CRF、分辨率、帧率、音频码率、强制软件编码、输出目录、参数摘要
 
-| 文档 | 内容 |
-|---|---|
-| [总结文档.md](总结文档.md) | **会话总结**：需求与功能现状、关键决策记录（含用户反馈）、全功能测试结果、缺陷证据链、已知限制 |
-| [docs/session-summary.md](docs/session-summary.md) | 分阶段工程日志（每轮改动的动机、根因与复测） |
-| [.trellis/tasks/10-11-frontend-polish/](.trellis/tasks/10-11-frontend-polish/) | 任务级 PRD / 设计 / 实施计划 / 原型与验收截图 |
-| [.trellis/spec/](.trellis/spec/) | 项目规范（WinUI 3 差异、x:Bind 限制、DPI 单位、断点与主题约定等） |
+**任务列表页（监控）**
+
+- 四张统计卡（全部 / 转换中 / 已完成 / 失败）+ 状态筛选 + 清除已完成 + 重试失败项
+- 每行：缩略图、进度条与百分比、已处理时长、按状态显隐的「定位输出文件 / 重试 / 取消 / 删除」
+
+**设置页**
+
+- 常规（完成后打开输出文件夹、输出目录、启动时恢复未完成任务）、界面（主题）、
+  编码器（硬件加速状态 + 重新探测）、ffmpeg（来源与版本 + 复制版本号）、关于（许可 / 发布页）
+- 设置页只放真实存在的开关，没有占位控件
+
+**底层能力**
+
+- **严格顺序队列**：同一时刻只转一个（编码本身吃满 CPU，并行只会互相抢资源）；
+  单任务失败不中断后续；取消分「取消当前」与「全部停止」两级
+- **硬件加速**：启动时对候选编码器逐个**真跑一次编码**（`h264_nvenc` → `h264_qsv` → `h264_amf` → `libx264`），
+  通过才启用；结果缓存到 `%LOCALAPPDATA%`，运行时若失败自动回退软件并失效缓存；可手动「强制软件编码」
+- **持久化**：`settings.json` 与 `queue.json`；启动恢复未完成任务并一律置「等待中」，绝不自动开跑
+- **输出安全**：重名产物自动追加 `_1/_2`，不覆盖已有文件；取消/失败时删除残缺输出
 
 ## 环境要求
 
-- Windows 10 1809+ / Windows 11
-- .NET 10 SDK（构建）；运行需 Windows App SDK 运行时（unpackaged 应用由系统提供）
-- ffmpeg 二进制（见下）
+- **运行**：Windows 10 1809+ / Windows 11（x64）；需要安装 **Windows App SDK 运行时**
+  （应用按框架依赖方式部署，运行时缺失则无法启动）
+- **构建**：**.NET 10 SDK**
+- **转码**：ffmpeg 二进制，按「随包捆绑 → 仓库 `tools/ffmpeg/` → 系统 `PATH`」三级查找，
+  界面右下角始终显示当前来源与版本
 
 ## 快速开始
 
@@ -45,28 +94,32 @@
 # 1. 安装 .NET 10 SDK（如未安装）
 winget install --id Microsoft.DotNet.SDK.10 --source winget
 
-# 2. 获取 ffmpeg 静态二进制到 tools/ffmpeg/（约 280MB，winget 优先、GitHub 直链兜底）
+# 2. 取 ffmpeg 静态二进制到 tools/ffmpeg/（约 280MB；仓库不存二进制）
 ./tools/fetch-ffmpeg.ps1
 
 # 3. 构建并运行
 dotnet build
 dotnet run --project src/VideoConverter
 
-# 4. 测试
+# 4. 单元测试
 dotnet test
 ```
 
-## 发布（自带 ffmpeg）
+以上命令均已在本机实跑（Windows 11 / .NET 10）：`dotnet build` 0 警告 0 错误，`dotnet test` 191/191 通过。
+构建输出里已经带着 `tools/ffmpeg/{ffmpeg,ffprobe}.exe`，也可以直接双击
+`src\VideoConverter\bin\Debug\net10.0-windows10.0.17763.0\VideoConverter.exe` 启动，不必用 `dotnet run`。
+
+## 发布（自带 ffmpeg 的绿色目录）
 
 ```powershell
 dotnet publish src/VideoConverter/VideoConverter.csproj -c Release -o publish/win-x64
 ```
 
-发布目录包含 `VideoConverter.exe` 与 `tools/ffmpeg/(ffmpeg|ffprobe).exe`，
-拷到未安装 ffmpeg 的机器上即可直接使用（应用顶部会显示"随包捆绑"）。
+产物 = `VideoConverter.exe` + `tools/ffmpeg/{ffmpeg,ffprobe}.exe`（+ XAML 编译产物），
+拷到没装 ffmpeg 的机器上直接可用，应用内会显示「随包捆绑」。
 
-> unpackaged WinUI 3 的 `dotnet publish` 不会自动带入 XAML 编译产物（.xbf/.pri），
-> 项目内已加 `CopyXamlBinariesToPublish` 目标补齐，否则运行时会直接崩溃。
+> unpackaged WinUI 3 的 `dotnet publish` 不会自动带上 `.xbf/.pri`，缺了它们一启动就崩，
+> 项目里用 `CopyXamlBinariesToPublish` 目标补齐。
 
 ## 架构
 
@@ -76,29 +129,69 @@ src/VideoConverter.Core/     # 纯 .NET 类库：与 ffmpeg CLI 交互的全部�
                              # AppSettings, QueueSnapshot
   Services/                  # FfmpegLocator, FfprobeMediaProbeService, FfmpegThumbnailService,
                              # FfmpegConversionService, ConversionQueue, EncoderProbeService,
-                             # AppSettingsStore, QueueStore
-  Internal/                  # ProcessRunner, ProgressState, MediaInfoMapper
-src/VideoConverter/          # WinUI 3 应用
+                             # AppSettingsStore, QueueStore, ThumbnailCache
+  Internal/                  # ProcessRunner, ProgressState, MediaInfoMapper, FfprobeJson
+src/VideoConverter/          # WinUI 3 应用（非打包）
   MainWindow.xaml(.cs)       # 导航壳 + 右下浮层提示 + 主题应用 + 窗口级拖放
-  Views/                     # ConvertPage / QueuePage（任务列表）/ SettingsPage
+  Views/                     # ConvertPage（转换）/ QueuePage（任务列表）/ SettingsPage（设置）
   ViewModels/MainViewModel.cs
   Styles/Overrides.xaml      # 三主题语义画刷 + 全局控件样式
   Controls/, Helpers/        # 无滚轮误触控件、值转换器
-tests/VideoConverter.Core.Tests/   # 178 个单元测试
+tests/VideoConverter.Core.Tests/   # 191 个单元测试
 tools/fetch-ffmpeg.ps1       # ffmpeg 二进制获取脚本
-tools/ui-*.ps1               # UI 自动化辅助（截图 / 操作 / 多档尺寸验收）
+tools/ui-*.ps1               # UI 自动化辅助（截图 / 操作 / 多档尺寸验收 / AutomationId 契约检查）
 ```
 
 设计要点：
 
-- ffmpeg 进度只解析 `-progress pipe:1` 的 `out_time_us`（`out_time_ms` 字段名有误导性，
-  实际输出微秒值，按毫秒解析会把进度放大 1000 倍）
-- 命令行参数经 `ProcessStartInfo.ArgumentList` 逐项传递，空格/中文路径安全
-- 取消时 Kill 进程树并删除不完整输出，避免误当成品播放
-- 硬件编码器按"编码格式 × 厂商"组合分别探测；探测通过后运行时仍失败则自动回退软件并失效缓存
-- 质量滑杆统一 0-51，内部按编码器量纲归一化（VP9/AV1 实际范围是 0-63），摘要显示实际值
+- 进度只解析 `-progress pipe:1` 的 `out_time_us`（`out_time_ms` 字段名有误导性，实际输出微秒，
+  按毫秒解析会把进度放大 1000 倍）
+- 硬件编码器按「编码格式 × 厂商」组合**分别**探测（H.264 的 `h264_nvenc` 可用不代表 `hevc_nvenc` 可用）
+- 质量滑杆统一 0-51，内部按编码器量纲归一化（VP9/AV1 实际范围是 0-63），参数摘要显示实际值
 - 容器与编码器有兼容矩阵（WebM 只接受 VP9/AV1，AVI 仅 H.264），非法组合自动纠正
+- 缩略图缓存 `%LOCALAPPDATA%\VideoConverter\thumbs`，文件名 = 输入路径小写的 SHA1，同文件重启后直接命中
 
-## 已知限制 / 后续增强
+## 验证（我自己跑过的）
 
-分段并行转码（同文件切段并行）、字幕封装、HDR/色彩空间、硬件解码（-hwaccel）。
+| 用例 | 怎么测的 | 结果 |
+|---|---|---|
+| 加载媒体信息 + 缩略图（需求 1） | 4 个真实录屏文件，ffprobe 字段逐项比对；UI 树中断言缩略图 Image 已实例化 | ✅ 字段与 ffprobe 一致，缩略图为真实帧 |
+| 真实转换（需求 2） | 队列跑真机转码 | ✅ 3/3 完成，产物 `ffprobe` 校验：h264、720×1280 / 1280×720、30/1 fps、时长与源一致 |
+| 多选入队 + 去重 | UI 自动化两次添加同一文件 | ✅ 第二次提示「跳过 1 个重复文件」 |
+| 逐项参数覆盖 | 齿轮 → 选 MKV/中等 → 检查行文案、标签、`queue.json` | ✅ 覆盖行产出 `.mkv`、继承行产出 `.mp4`，重启后覆盖仍在 |
+| 失败不中断 / 两级取消 | 注入不可用编码器与中途取消 | ✅ 失败项标记原因，后续任务继续；删除残缺输出 |
+| 队列管理 | 上移/下移/清空/清除已完成/定位输出文件 | ✅ 顺序生效，定位会拉起资源管理器选中产物 |
+| 设置与队列持久化 + 重启恢复 | 改设置、重启应用 | ✅ 设置即时落盘；恢复项一律「等待中」，无 ffmpeg 进程被拉起 |
+| 主题切换 | 切换浅色/深色/跟随系统并采样像素 | ✅ 深色 39,39,39 / 浅色 255,255,255 |
+| 开源许可对话框 | 打开「查看许可」 | ✅ 含 FFmpeg GPL v3 构建说明与两个 MIT 依赖 |
+| 多档窗口尺寸 | 800×600 / 1180×800 / 1600×1000 逐页截图 | ✅ 主操作常驻可见，导航按宽度自适应折叠 |
+
+本轮复跑（干净状态）：启动 → 恢复 3 项队列 → 一键开始转换 → 3/3 完成；完成后 `queue.json`
+只剩空列表，任务列表统计卡 3 / 0 / 3 / 0 与列表逐行状态一致。
+
+自动化跑不了的地方（系统「打开文件」对话框、外部浏览器拉起）已改用其它手段核对，
+并记在[已知限制](#已知限制)与[总结文档.md](总结文档.md)里。
+
+## 已知限制
+
+- **深色主题下窗口标题栏仍是系统浅色**：非打包 WinUI 3 的标题栏由系统绘制，应用只接管了内容区
+  （做自定义标题栏要改窗口无边框方案，本轮按「不做」处理）
+- **不能暂停转换**：ffmpeg 没有真正的暂停能力，只提供「取消当前 / 全部停止」
+- 不做 GIF / ProRes 输出、字幕与章节保留、HDR 与色彩空间处理、硬件解码（`-hwaccel`）；
+  这些在 Core 层没有对应能力，宁可没有也不放空开关
+- 明确砍掉的功能及理由见[总结文档.md](总结文档.md)（托盘常驻、系统通知、并发转码、多语言）
+
+## 文档
+
+| 文档 | 内容 |
+|---|---|
+| [总结文档.md](总结文档.md) | **会话总结**：需求与功能现状、关键决策记录（含用户反馈）、全功能测试结果、缺陷证据链、已知限制 |
+| [docs/session-summary.md](docs/session-summary.md) | 分阶段工程日志（每轮改动的动机、根因与复测） |
+| [.trellis/tasks/10-11-frontend-polish/](.trellis/tasks/10-11-frontend-polish/) | 任务级 PRD / 设计 / 实施计划 / 原型与验收截图 |
+| [.trellis/spec/](.trellis/spec/) | 项目规范（WinUI 3 与 WPF 差异、x:Bind 限制、DPI 单位、断点与主题约定等） |
+
+## 许可
+
+本仓库是笔试作业代码。随应用分发的 ffmpeg 为 **GPL v3 构建**
+（`--enable-gpl --enable-version3`），再分发需遵守 GPL v3，应用内「设置 → 关于 → 查看许可」
+写明来源与义务；`CommunityToolkit.Mvvm`、`Windows App SDK` 为 MIT。
