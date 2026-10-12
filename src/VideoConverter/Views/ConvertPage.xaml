@@ -139,16 +139,12 @@
                                                     <TextBlock Text="{x:Bind FileName, Mode=OneWay}" FontSize="14"
                                                                FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                                                                ToolTipService.ToolTip="{x:Bind InputPath, Mode=OneWay}" />
-                                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                                        <TextBlock Text="{x:Bind MetaPrefix, Mode=OneWay}" FontSize="12"
-                                                                   Foreground="{ThemeResource AppSubtleText}"
-                                                                   TextTrimming="CharacterEllipsis" />
-                                                        <TextBlock Text="→" FontSize="12"
-                                                                   Foreground="{ThemeResource AppSubtleText}" />
-                                                        <TextBlock Text="{x:Bind TargetSummary, Mode=OneWay}" FontSize="12"
-                                                                   Foreground="{ThemeResource AppSubtleText}"
-                                                                   TextTrimming="CharacterEllipsis" />
-                                                    </StackPanel>
+                                                    <!-- 单个 TextBlock：超宽只末端截断，
+                                                         不会把靠后的元素挤出视野 -->
+                                                    <TextBlock Text="{x:Bind MetaLine, Mode=OneWay}" FontSize="12"
+                                                               Foreground="{ThemeResource AppSubtleText}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTipService.ToolTip="{x:Bind MetaLine, Mode=OneWay}" />
                                                     <Grid ColumnSpacing="8" Margin="0,2,0,0">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="Auto" />

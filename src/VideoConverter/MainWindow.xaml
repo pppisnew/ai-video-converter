@@ -5,7 +5,7 @@
     Title="视频格式转换器">
 
     <!-- 页标题回到各页内部；窗口只保留导航 + 右下浮层提示 -->
-    <Grid AllowDrop="True" DragOver="Root_DragOver" Drop="Root_Drop" DragLeave="Root_DragLeave">
+    <Grid x:Name="RootGrid" AllowDrop="True" DragOver="Root_DragOver" Drop="Root_Drop" DragLeave="Root_DragLeave">
         <NavigationView x:Name="NavView"
                         IsBackButtonVisible="Collapsed"
                         IsSettingsVisible="False"

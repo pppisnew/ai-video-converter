@@ -127,6 +127,50 @@
                     </StackPanel>
                 </Border>
 
+                <!-- 界面：主题（语言已确认砍掉，不做假控件） -->
+                <Border x:Name="GroupAppearance" Grid.Row="2" Grid.Column="1"
+                        Style="{StaticResource CardBorderStyle}" Padding="0">
+                    <StackPanel>
+                        <Grid Style="{StaticResource CardHeaderStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Grid.Column="0" Glyph="&#xE790;" FontSize="20" Margin="0,0,10,0"
+                                      Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                                      VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="界面" Style="{StaticResource CardTitleStyle}"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+
+                        <StackPanel Padding="18,4,18,14">
+                            <Grid Style="{StaticResource SetRowStyle}" ColumnSpacing="14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                    <TextBlock Text="主题" FontSize="14" />
+                                    <TextBlock Text="切换后立即生效，重启后仍然保留" FontSize="11"
+                                               Foreground="{ThemeResource AppSubtleText}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16"
+                                            VerticalAlignment="Center">
+                                    <RadioButton x:Name="ThemeLightRadio" Content="浅色" Tag="Light" GroupName="AppTheme"
+                                                 Checked="ThemeRadio_Changed"
+                                                 AutomationProperties.Name="主题浅色" />
+                                    <RadioButton x:Name="ThemeDarkRadio" Content="深色" Tag="Dark" GroupName="AppTheme"
+                                                 Checked="ThemeRadio_Changed"
+                                                 AutomationProperties.Name="主题深色" />
+                                    <RadioButton x:Name="ThemeSystemRadio" Content="跟随系统" Tag="System" GroupName="AppTheme"
+                                                 Checked="ThemeRadio_Changed"
+                                                 AutomationProperties.Name="主题跟随系统" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
                 <!-- 编码器 -->
                 <Border x:Name="GroupEncoder" Grid.Row="0" Grid.Column="1"
                         Style="{StaticResource CardBorderStyle}" Padding="0">

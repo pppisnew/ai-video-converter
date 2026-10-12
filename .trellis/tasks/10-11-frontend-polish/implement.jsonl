@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "frontend entry point: pre-development checklist for WinUI 3/XAML work"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "P2 adds a row-level cancel button and new controls; need the WinUI3-vs-WPF differences table and the AutomationProperties.Name/AutomationId rule"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "P2 adds settings persistence and theme switching; need the MVVM conventions, x:Bind converter limits and progress-marshalling rules"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "P2 touches XAML bindings and nullable code in the ViewModel"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "quality bar for the new code"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "settings persistence and per-item cancel span Core queue and UI layer"}

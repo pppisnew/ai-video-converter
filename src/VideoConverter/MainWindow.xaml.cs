@@ -2,6 +2,7 @@
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using Microsoft.UI.Windowing;
+using VideoConverter.Core.Models;
 using VideoConverter.ViewModels;
 using VideoConverter.Views;
 using Windows.ApplicationModel.DataTransfer;
@@ -35,10 +36,26 @@ public sealed partial class MainWindow : Window
         ViewModel.AttachQueueEvents();
         InitializeComponent();
         ConfigureWindow();
+
+        // 主题施加在窗口根元素上：RequestedTheme 只影响子树，Window 本身没有这个属性。
+        // 启动时先按存下来的偏好施加一次，之后订阅变更即可实时切换。
+        ApplyTheme(ViewModel.Theme);
+        ViewModel.ThemeChanged += ApplyTheme;
+
         ContentFrame.Navigate(typeof(ConvertPage));
     }
 
     public MainViewModel ViewModel { get; }
+
+    /// <summary>
+    /// 把主题偏好施加到窗口内容根元素。ElementTheme.Default 即跟随系统。
+    /// </summary>
+    private void ApplyTheme(AppTheme theme) => RootGrid.RequestedTheme = theme switch
+    {
+        AppTheme.Light => ElementTheme.Light,
+        AppTheme.Dark => ElementTheme.Dark,
+        _ => ElementTheme.Default,
+    };
 
     private void ConfigureWindow()
     {

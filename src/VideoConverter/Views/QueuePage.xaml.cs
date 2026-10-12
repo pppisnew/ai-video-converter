@@ -54,6 +54,14 @@ public sealed partial class QueuePage : Page
         }
     }
 
+    private void CancelItemButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: QueueItem item })
+        {
+            ViewModel.CancelItem(item);
+        }
+    }
+
     private void RetryItemButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: QueueItem item })

@@ -245,3 +245,76 @@
 
 - 单任务「暂停/继续」（ffmpeg 无真暂停能力）
 - 语言本地化、并发转码、系统通知、托盘常驻（见 §七）
+
+
+---
+
+## P2 实施记录（2026-10-12，第二轮）
+
+### 已实施
+
+**1. 设置持久化基建（Core 层，可单测）**
+
+- 新增 `Core/Models/AppSettings.cs`：`AppTheme` 枚举 + `AppSettings`（Theme / Container / Crf /
+  Scale / AudioBitrateKbps），带 `Sanitized()` 把越界值夹回合法范围
+  （设置文件可能被手改坏或来自旧版本）
+- 新增 `Core/Services/AppSettingsStore.cs`：读写
+  `%LOCALAPPDATA%\VideoConverter\settings.json`，`System.Text.Json` + `JsonStringEnumConverter`。
+  读失败（不存在/损坏/越权）回退默认值，写失败静默忽略——设置文件的问题
+  绝不该阻止应用启动（与 EncoderProbeService 的既有取舍一致）
+- `MainViewModel` 构造时先读回再赋值（顺序反了会在启动瞬间把存下来的设置覆盖掉）；
+  落盘用 250ms 防抖，拖质量滑杆只写一次
+- 新增 6 个单测：默认值、全字段 round-trip、损坏 JSON 兜底、越界夹取、
+  自动建目录、不认识枚举名兜底
+
+**2. 主题切换（浅色 / 深色 / 跟随系统）**
+
+- `MainViewModel.Theme`（`AppTheme`）+ `ThemeChanged` 事件
+- `MainWindow` 把 `RequestedTheme` 施加到**窗口根元素**（WinUI 3 的 Window 没有该属性，
+  只能加在内容根上）；启动时先按存下来的偏好施加一次，再订阅变更
+- 设置页新增「界面」卡片（第 3 行第 2 列，单列断点时排到第 4 行），三个 RadioButton，
+  选中态每次页面加载从 ViewModel 回填
+
+**3. 任务列表页「转换中」行补「取消」按钮**
+
+- `QueueItem.IsConverting`；`MainViewModel.CancelItem(item)`：队列严格顺序，
+  同一时刻只有一个任务在转换，所以"取消这一项"等价于取消当前项，点的不是当前项时给提示
+- 按钮带 `AutomationId="CancelTaskButton"`
+
+**4. 队列行元信息文案去误导**
+
+- `TargetSummary` 追加 `（继承全局）`，明确告知当前参数来自右侧面板而非行内可调
+  （P5 落地后此处才变成条件显示）
+
+### 实施中发现并修复的问题（重要经验）
+
+**把"（继承全局）"加到 `TargetSummary` 后，元信息行溢出被裁切**——
+原行是 7 个 TextBlock 横向排列，超宽时靠后的元素被直接挤出视野
+（实测"· 中等"整个消失，`TargetSummary` 自身被切一半成"自动（"）。
+
+修复：把整行合成**单个** `QueueItem.MetaLine` 属性 + 单个 TextBlock，
+超宽时只在末端截断加省略号。同时删掉 `MetaPrefix` / `TaskMetaPrefix` 两个前缀属性
+（时长与缩略图角标重复，一并去掉）。
+
+> 教训：横向排列的多个 TextBlock 不能表达"整体截断"，任何一个变长都会吃掉后面的元素。
+> 可截断的摘要行必须合成一个字符串。
+
+### 验证
+
+- 构建 0 警告 0 错误；测试 148/148（原 142 + 新增 6）
+- 主题：点「深色」→ 内容区立即变深（卡片底 (31,31,31)）；`settings.json` 落盘
+  `"Theme": "Dark"`；**重启后仍是深色且单选态正确**
+- 取消按钮：转换中行出现 `CancelTaskButton`，已完成行出现定位按钮，等待中行只有删除
+- 截图：`shots/p2-settings-system.png`、`p2-settings-dark.png`、`p2-restart-dark.png`、
+  `p2-convert-loaded.png`、`p2-convert-metaline.png`、`p2-tasks-converting.png`
+
+### 遗留（未阻塞 P2 验收，建议并入 P3）
+
+1. **转换页队列行尾部仍会被截断**：转换页左列比任务列表页窄，且行尾有
+   上移/下移/删除三个图标按钮，"（继承全局）"在 1180 DIP 下会被省略号吃掉。
+   已加 `ToolTip` 保证完整信息可达。P3 把上移/下移收进行内右键菜单后，
+   行尾会腾出约 60 DIP，届时可完整显示。
+2. UI 自动化踩坑复现：`.ps1` 里写中文字面量会被 ANSI 解码损坏（本环境
+   `Set-Content -Encoding utf8` 不带 BOM，且用 Windows PowerShell 5.1 执行），
+   导致 UIA 按 Name 匹配静默失败。脚本内一律用 `[char]0xXXXX` 构造中文字符串。
+   另：`SelectionItemPattern.Select()` 比合成鼠标点击可靠得多。

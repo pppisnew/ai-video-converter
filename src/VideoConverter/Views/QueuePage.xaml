@@ -184,21 +184,12 @@
                                     <TextBlock Text="{x:Bind FileName, Mode=OneWay}" FontSize="14" FontWeight="SemiBold"
                                                TextTrimming="CharacterEllipsis"
                                                ToolTipService.ToolTip="{x:Bind InputPath, Mode=OneWay}" />
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <TextBlock Text="{x:Bind TaskMetaPrefix, Mode=OneWay}" FontSize="12"
-                                                   Foreground="{ThemeResource AppSubtleText}"
-                                                   TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="·" FontSize="12" Foreground="{ThemeResource AppSubtleText}" />
-                                        <TextBlock Text="{x:Bind SourceFormat, Mode=OneWay}" FontSize="12"
-                                                   Foreground="{ThemeResource AppSubtleText}" />
-                                        <TextBlock Text="→" FontSize="12" Foreground="{ThemeResource AppSubtleText}" />
-                                        <TextBlock Text="{x:Bind TargetSummary, Mode=OneWay}" FontSize="12"
-                                                   Foreground="{ThemeResource AppSubtleText}"
-                                                   TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="·" FontSize="12" Foreground="{ThemeResource AppSubtleText}" />
-                                        <TextBlock Text="{x:Bind QualityLabel, Mode=OneWay}" FontSize="12"
-                                                   Foreground="{ThemeResource AppSubtleText}" />
-                                    </StackPanel>
+                                    <!-- 单个 TextBlock：超宽只末端截断，
+                                         不会把靠后的元素挤出视野 -->
+                                    <TextBlock Text="{x:Bind MetaLine, Mode=OneWay}" FontSize="12"
+                                               Foreground="{ThemeResource AppSubtleText}"
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTipService.ToolTip="{x:Bind MetaLine, Mode=OneWay}" />
                                     <Grid ColumnSpacing="10" Margin="0,5,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" MaxWidth="340" />
@@ -246,6 +237,14 @@
                                             ToolTipService.ToolTip="重新加入等待队列"
                                             AutomationProperties.Name="重试该任务">
                                         <FontIcon Glyph="&#xE72C;" FontSize="18" />
+                                    </Button>
+                                    <Button Style="{StaticResource SubtleIconButtonStyle}"
+                                            Visibility="{x:Bind IsConverting, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
+                                            Click="CancelItemButton_Click"
+                                            ToolTipService.ToolTip="取消这个任务"
+                                            AutomationProperties.Name="取消该任务"
+                                            AutomationProperties.AutomationId="CancelTaskButton">
+                                        <FontIcon Glyph="&#xE711;" FontSize="16" />
                                     </Button>
                                     <Button Style="{StaticResource DangerIconButtonStyle}"
                                             Click="RemoveItemButton_Click"

@@ -34,6 +34,7 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
         OutputPath = outputPath;
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Settings)));
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(TargetSummary)));
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(MetaLine)));
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(QualityLabel)));
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(OutputPath)));
     }
@@ -92,7 +93,13 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
     };
 
     /// <summary>列表行元信息前缀：大小 · 时长 · 分辨率（信息缺失时给出提示而非空白）。</summary>
-    public string MetaPrefix
+    /// <summary>
+    /// 队列行元信息单行文案，如 "1.7 MB · 720 x 1280 · MP4 → MP4 · 自动（继承全局） · 中等"。
+    /// 故意合成一个字符串而不是多个 TextBlock 横向排列：后者超宽时会把靠后的元素
+    /// 直接挤出视野（实测加上"（继承全局）"后质量档位被吃掉），单个 TextBlock 只会
+    /// 末端截断加省略号。时长不在这里——缩略图角标已经显示，避免同一行重复。
+    /// </summary>
+    public string MetaLine
     {
         get
         {
@@ -102,14 +109,15 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
                 parts.Add(FormatSize(size));
             }
 
-            if (Info?.Duration is { } duration)
-            {
-                parts.Add(FormatTimeSpan(duration));
-            }
-
             if (Info?.Width is { } width && Info?.Height is { } height)
             {
                 parts.Add($"{width} x {height}");
+            }
+
+            parts.Add($"{SourceFormat} → {TargetSummary}");
+            if (!string.IsNullOrEmpty(QualityLabel))
+            {
+                parts.Add(QualityLabel);
             }
 
             return parts.Count > 0 ? string.Join(" · ", parts) : "信息不可用";
@@ -117,25 +125,6 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
     }
 
     /// <summary>任务行元信息前缀：大小 · 分辨率（原型任务行不带时长，时长走缩略图角标）。</summary>
-    public string TaskMetaPrefix
-    {
-        get
-        {
-            var parts = new List<string>();
-            if (Info?.SizeBytes is { } size)
-            {
-                parts.Add(FormatSize(size));
-            }
-
-            if (Info?.Width is { } width && Info?.Height is { } height)
-            {
-                parts.Add($"{width} x {height}");
-            }
-
-            return parts.Count > 0 ? string.Join(" · ", parts) : "信息不可用";
-        }
-    }
-
     /// <summary>缩略图右下角时长角标（mm:ss；≥1 小时为 h:mm:ss），时长未知时为空串。</summary>
     public string DurationBadgeText => Info?.Duration is { } duration && duration > TimeSpan.Zero
         ? duration.TotalHours >= 1
@@ -186,14 +175,22 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
     /// <summary>是否未在转换中（驱动单项删除按钮的可见性）。</summary>
     public bool IsNotConverting => State != QueueItemState.Converting;
 
-    /// <summary>该队列项的目标格式摘要，如 "MKV · H.265"。</summary>
+    /// <summary>是否正在转换。任务列表页据此显示「取消」按钮。</summary>
+    public bool IsConverting => State == QueueItemState.Converting;
+
+    /// <summary>
+    /// 该队列项的目标格式摘要，如 "MKV · H.265（继承全局）"。
+    /// 括号标明参数来源：P5 的逐项覆盖落地前，所有队列项都继承右侧面板的全局参数，
+    /// 必须在界面上说清楚，否则用户会以为这里是可点的下拉。
+    /// </summary>
     public string TargetSummary
     {
         get
         {
+            const string inherited = "（继承全局）";
             if (Settings.AudioOnly)
             {
-                return "MP3 · 仅音频";
+                return "MP3 · 仅音频" + inherited;
             }
 
             var codec = Settings.Encoder switch
@@ -206,7 +203,7 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
                 _ => "自动",
             };
 
-            return $"{Settings.Container.TrimStart('.').ToUpperInvariant()} · {codec}";
+            return $"{Settings.Container.TrimStart('.').ToUpperInvariant()} · {codec}{inherited}";
         }
     }
 

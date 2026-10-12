@@ -16,6 +16,9 @@ public sealed record EncoderOption(string Label, VideoEncoderChoice Value);
 
 public sealed record ScaleOption(string Label, ResolutionScale Value);
 
+/// <summary>设置页主题选项（标签 + 取值）。</summary>
+public sealed record ThemeOption(string Label, AppTheme Value);
+
 /// <summary>任务列表的筛选条件。</summary>
 public enum TaskFilter
 {
@@ -57,6 +60,8 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly IEncoderProbeService? _probe;
     private readonly DispatcherQueue _dispatcher;
     private readonly DispatcherQueueTimer _statusTimer;
+    private readonly AppSettingsStore _settingsStore;
+    private readonly DispatcherQueueTimer _saveTimer;
 
     public MainViewModel(IFfmpegLocator locator, DispatcherQueue dispatcher)
     {
@@ -68,6 +73,18 @@ public sealed partial class MainViewModel : ObservableObject
         _statusTimer.Interval = TimeSpan.FromSeconds(4);
         _statusTimer.IsRepeating = false;
         _statusTimer.Tick += (_, _) => StatusVisible = Visibility.Collapsed;
+
+        _settingsStore = new AppSettingsStore();
+
+        // 设置落盘防抖：拖质量滑杆会连续触发，合并成一次写盘
+        _saveTimer = _dispatcher.CreateTimer();
+        _saveTimer.Interval = TimeSpan.FromMilliseconds(250);
+        _saveTimer.IsRepeating = false;
+        _saveTimer.Tick += (_, _) =>
+        {
+            _saveTimer.Stop();
+            _settingsStore.Save(CaptureSettings());
+        };
 
         var binaries = locator.Locate();
         if (binaries is not null)
@@ -97,17 +114,24 @@ public sealed partial class MainViewModel : ObservableObject
 
         Queue = new ObservableCollection<QueueItem>();
         Containers = new[] { ".mp4", ".mov", ".mkv", ".avi", ".webm", ".mp3" };
-        SelectedContainer = ".mp4";
-        EncoderChoice = VideoEncoderChoice.Auto;
-        Crf = 23;
-        Scale = ResolutionScale.Original;
-        AudioBitrate = 128;
 
+        // 选项集合必须先填充：OnScaleChanged / RebuildEncoderOptions 都依赖它们
         ScaleOptions.Add(new ScaleOption("原始分辨率", ResolutionScale.Original));
         ScaleOptions.Add(new ScaleOption("1080p", ResolutionScale.P1080));
         ScaleOptions.Add(new ScaleOption("720p", ResolutionScale.P720));
         ScaleOptions.Add(new ScaleOption("480p", ResolutionScale.P480));
-        SelectedScaleOption = ScaleOptions[0];
+
+        // 再读回上次的偏好；顺序反了会在启动瞬间把存下来的设置覆盖掉
+        var saved = _settingsStore.Load();
+        SelectedContainer = saved.Container;
+        EncoderChoice = VideoEncoderChoice.Auto;
+        Crf = saved.Crf;
+        Scale = saved.Scale;
+        AudioBitrate = saved.AudioBitrateKbps;
+        Theme = saved.Theme;
+
+        // Scale 变更已把 SelectedScaleOption 同步过去；兜底防空（枚举被收敛过不该发生）
+        SelectedScaleOption ??= ScaleOptions[0];
         RebuildEncoderOptions();
         SelectedEncoderOption = EncoderOptions.FirstOrDefault();
         StatusBrush = NormalTextBrush;
@@ -128,6 +152,18 @@ public sealed partial class MainViewModel : ObservableObject
         return version is null
             ? "版本未知 · WinUI 3 / Windows App SDK"
             : $"版本 {version.ToString(3)} · WinUI 3 / Windows App SDK";
+    }
+
+    /// <summary>主题偏好变更：由 MainWindow 订阅后施加到窗口根元素。</summary>
+    public event Action<AppTheme>? ThemeChanged;
+
+    [ObservableProperty]
+    private AppTheme _theme = AppTheme.System;
+
+    partial void OnThemeChanged(AppTheme value)
+    {
+        ThemeChanged?.Invoke(value);
+        ScheduleSettingsSave();
     }
 
     [ObservableProperty]
@@ -430,6 +466,15 @@ public sealed partial class MainViewModel : ObservableObject
 
     public ObservableCollection<ScaleOption> ScaleOptions { get; } = new();
 
+    /// <summary>主题选项：浅色 / 深色 / 跟随系统。</summary>
+    public IReadOnlyList<ThemeOption> ThemeOptions { get; } = new[]
+    {
+        new ThemeOption("浅色", AppTheme.Light),
+        new ThemeOption("深色", AppTheme.Dark),
+        new ThemeOption("跟随系统", AppTheme.System),
+    };
+
+
     [ObservableProperty]
     private EncoderOption? _selectedEncoderOption;
 
@@ -478,6 +523,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnSelectedContainerChanged(string value)
     {
+        ScheduleSettingsSave();
         // 容器切换后编码器可能不再合法（如 WebM 不支持 H.264）
         if (!EncoderCatalog.IsCompatible(value, EncoderChoice))
         {
@@ -531,7 +577,11 @@ public sealed partial class MainViewModel : ObservableObject
         UpdateSummary();
     }
 
-    partial void OnCrfChanged(int value) => UpdateSummary();
+    partial void OnCrfChanged(int value)
+    {
+        UpdateSummary();
+        ScheduleSettingsSave();
+    }
 
     partial void OnSelectedScaleOptionChanged(ScaleOption value)
     {
@@ -543,6 +593,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnScaleChanged(ResolutionScale value)
     {
+        ScheduleSettingsSave();
         var match = ScaleOptions.FirstOrDefault(o => o.Value == value);
         if (match is not null && SelectedScaleOption != match)
         {
@@ -552,7 +603,11 @@ public sealed partial class MainViewModel : ObservableObject
         UpdateSummary();
     }
 
-    partial void OnAudioBitrateChanged(int value) => UpdateSummary();
+    partial void OnAudioBitrateChanged(int value)
+    {
+        UpdateSummary();
+        ScheduleSettingsSave();
+    }
 
     partial void OnForceSoftwareChanged(bool value) => UpdateSummary();
 
@@ -905,6 +960,43 @@ public sealed partial class MainViewModel : ObservableObject
         item.ResetForRetry();
         RefreshQueueSummary();
         SetStatus($"已重新加入 {item.FileName}", false);
+    }
+
+    /// <summary>
+    /// 行内取消单个任务。队列严格顺序，同一时刻只有一个任务在转换，
+    /// 因此"取消这一项"实际等价于取消当前项；点的不是当前项时给出提示。
+    /// </summary>
+    public void CancelItem(QueueItem? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        if (item.State != QueueItemState.Converting)
+        {
+            SetStatus("只能取消正在转换的任务", true);
+            return;
+        }
+
+        _queue.CancelCurrent();
+    }
+
+    /// <summary>把当前偏好打包成设置对象。</summary>
+    private AppSettings CaptureSettings() => new()
+    {
+        Theme = Theme,
+        Container = SelectedContainer,
+        Crf = Crf,
+        Scale = Scale,
+        AudioBitrateKbps = AudioBitrate,
+    };
+
+    /// <summary>排一次防抖落盘；构造期的高频赋值只会写一次。</summary>
+    private void ScheduleSettingsSave()
+    {
+        _saveTimer.Stop();
+        _saveTimer.Start();
     }
 
     /// <summary>移除单个队列项（列表项上的删除按钮直接调用）。转换中的项不可移除。</summary>

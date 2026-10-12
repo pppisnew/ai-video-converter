@@ -1,5 +1,6 @@
 ﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using VideoConverter.Core.Models;
 using VideoConverter.ViewModels;
 
 namespace VideoConverter.Views;
@@ -14,12 +15,16 @@ public sealed partial class SettingsPage : Page
         InitializeComponent();
         Loaded += OnPageLoaded;
         SizeChanged += OnPageSizeChanged;
+
+        ThemeRadios.Add(ThemeLightRadio);
+        ThemeRadios.Add(ThemeDarkRadio);
+        ThemeRadios.Add(ThemeSystemRadio);
     }
 
     /// <summary>页面绑定源：应用级共享 ViewModel（x:Bind 需要页面自身暴露该属性）。</summary>
     public MainViewModel ViewModel { get; }
 
-    private void OnPageLoaded(object sender, RoutedEventArgs e) => ApplyBreakpoint();
+    private System.Collections.Generic.List<RadioButton> ThemeRadios { get; } = new();
 
     private void OnPageSizeChanged(object sender, SizeChangedEventArgs e) => ApplyBreakpoint();
 
@@ -44,5 +49,30 @@ public sealed partial class SettingsPage : Page
         Grid.SetColumn(GroupFfmpeg, 0);
         Grid.SetRow(GroupAbout, singleColumn ? 3 : 1);
         Grid.SetColumn(GroupAbout, singleColumn ? 0 : 1);
+
+        // 界面卡片：两列时占第 2 行右列，单列时排到第 4 行
+        Grid.SetRow(GroupAppearance, singleColumn ? 4 : 2);
+        Grid.SetColumn(GroupAppearance, 0);
+    }
+
+    /// <summary>主题单选：Tag 直接给枚举名，解析失败就忽略，不写坏设置。</summary>
+    private void ThemeRadio_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton { Tag: string tag } && Enum.TryParse<AppTheme>(tag, out var theme))
+        {
+            ViewModel.Theme = theme;
+        }
+    }
+
+    private void OnPageLoaded(object sender, RoutedEventArgs e)
+    {
+        // 页面每次导航都会重建，单选态要从 ViewModel 回填（而非只靠用户点击）
+        var theme = ViewModel.Theme;
+        foreach (var radio in ThemeRadios)
+        {
+            radio.IsChecked = radio.Tag as string == theme.ToString();
+        }
+
+        ApplyBreakpoint();
     }
 }
