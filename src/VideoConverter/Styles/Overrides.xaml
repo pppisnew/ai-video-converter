@@ -29,8 +29,8 @@
             <SolidColorBrush x:Key="AppBadgeNeutralBackground" Color="#1A000000" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
-            <SolidColorBrush x:Key="AppCardBackground" Color="#1F1F1F" />
-            <SolidColorBrush x:Key="AppCardBackgroundHover" Color="#292929" />
+            <SolidColorBrush x:Key="AppCardBackground" Color="#292929" />
+            <SolidColorBrush x:Key="AppCardBackgroundHover" Color="#333333" />
             <SolidColorBrush x:Key="AppSubtleText" Color="#9A9A9A" />
             <SolidColorBrush x:Key="AppQueueItemSelected" Color="#2C2C2C" />
             <SolidColorBrush x:Key="AppQueueItemSelectedBorder" Color="#6B6B6B" />

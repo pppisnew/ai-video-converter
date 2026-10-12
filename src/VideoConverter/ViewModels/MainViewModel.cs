@@ -1111,6 +1111,10 @@ public sealed partial class MainViewModel : ObservableObject
             restored++;
         }
 
+        // 恢复后必须选中一项：否则「媒体信息」（缩略图 + 字段）会一直隐藏，
+        // 需求 1 的"加载视频信息并显示缩略图"在重启场景下会静默失效。
+        SelectedItem ??= Queue.FirstOrDefault();
+
         if (restored == 0 && skipped == 0)
         {
             return;

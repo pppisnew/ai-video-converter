@@ -288,8 +288,9 @@
                             </Grid>
                         </StackPanel>
 
-                        <!-- 媒体信息：默认折叠，展开后是单个选中文件的完整信息（缩略图 + 十项字段） -->
-                        <Expander HorizontalAlignment="Stretch" AutomationProperties.Name="媒体信息"
+                        <!-- 媒体信息：需求 1 要求"加载视频信息并显示缩略图"，因此默认展开；
+                             折叠后不占据空间，用户仍可收起。 -->
+                        <Expander HorizontalAlignment="Stretch" AutomationProperties.Name="媒体信息" IsExpanded="True"
                                   Visibility="{x:Bind ViewModel.HasSelectedItem, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
                             <Expander.Header>
                                 <TextBlock Text="媒体信息" Style="{StaticResource CardTitleStyle}" />
