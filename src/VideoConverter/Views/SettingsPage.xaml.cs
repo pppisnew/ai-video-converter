@@ -43,19 +43,18 @@ public sealed partial class SettingsPage : Page
         // 单列时消掉列间距，否则卡片右侧会留下一条空隙
         SettingsLayout.ColumnSpacing = singleColumn ? 0 : 20;
 
-        // 单列顺序：转换 -> 常规 -> 编码器 -> ffmpeg -> 界面 -> 关于（关于永远在最后）
-        Grid.SetRow(GroupRegular, singleColumn ? 1 : 2);
-        Grid.SetColumn(GroupRegular, 0);
-        Grid.SetRow(GroupEncoder, singleColumn ? 2 : 0);
-        Grid.SetColumn(GroupEncoder, singleColumn ? 0 : 1);
-        Grid.SetRow(GroupFfmpeg, singleColumn ? 3 : 1);
+        // 两列：左列 ffmpeg / 常规，右列 关于 / 界面，编码器独占最后一行。
+        // 单列顺序：ffmpeg -> 关于 -> 常规 -> 界面 -> 编码器（编码器永远在最后）。
+        Grid.SetRow(GroupFfmpeg, 0);
         Grid.SetColumn(GroupFfmpeg, 0);
-        Grid.SetRow(GroupAbout, singleColumn ? 5 : 1);
+        Grid.SetRow(GroupAbout, singleColumn ? 1 : 0);
         Grid.SetColumn(GroupAbout, singleColumn ? 0 : 1);
-
-        // 界面卡片：两列时占第 2 行右列（原先漏了列号，被压在常规卡片下），单列时排到第 4 行
-        Grid.SetRow(GroupAppearance, singleColumn ? 4 : 2);
+        Grid.SetRow(GroupRegular, singleColumn ? 2 : 1);
+        Grid.SetColumn(GroupRegular, 0);
+        Grid.SetRow(GroupAppearance, singleColumn ? 3 : 1);
         Grid.SetColumn(GroupAppearance, singleColumn ? 0 : 1);
+        Grid.SetRow(GroupEncoder, singleColumn ? 4 : 2);
+        Grid.SetColumn(GroupEncoder, 0);
     }
 
     /// <summary>主题单选：Tag 直接给枚举名，解析失败就忽略，不写坏设置。</summary>

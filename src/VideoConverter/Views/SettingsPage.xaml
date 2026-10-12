@@ -31,125 +31,11 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- 转换 -->
-                <Border x:Name="GroupConvert" Grid.Row="0" Grid.Column="0"
-                        Style="{StaticResource CardBorderStyle}" Padding="0">
-                    <StackPanel>
-                        <Grid Style="{StaticResource CardHeaderStyle}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <FontIcon Grid.Column="0" Glyph="&#xE9E9;" FontSize="20" Margin="0,0,10,0"
-                                      Foreground="{ThemeResource AccentFillColorDefaultBrush}"
-                                      VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="1" Text="转换" Style="{StaticResource CardTitleStyle}"
-                                       VerticalAlignment="Center" />
-                        </Grid>
-
-                        <StackPanel Padding="18,4,18,14">
-                            <Grid Style="{StaticResource SetRowStyle}" ColumnSpacing="14">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="输出格式" FontSize="14" VerticalAlignment="Center" />
-                                <ctl:NoWheelComboBox Grid.Column="1" MinWidth="132" Height="32" FontSize="14"
-                                    ItemsSource="{x:Bind ViewModel.Containers, Mode=OneWay}"
-                                    SelectedItem="{x:Bind ViewModel.SelectedContainer, Mode=TwoWay}"
-                                    AutomationProperties.Name="输出格式">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding Converter={StaticResource ExtensionLabel}}" />
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ctl:NoWheelComboBox>
-                            </Grid>
-
-                            <Grid Style="{StaticResource SetRowStyle}" ColumnSpacing="14">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="默认质量" FontSize="14" VerticalAlignment="Center" />
-                                <ctl:NoWheelSlider Grid.Column="1" Width="120" Minimum="0" Maximum="51"
-                                    Value="{x:Bind ViewModel.Crf, Mode=TwoWay}" VerticalAlignment="Center"
-                                    AutomationProperties.Name="默认质量" />
-                                <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.Crf, Mode=OneWay}" FontSize="14"
-                                           FontWeight="SemiBold" MinWidth="24" TextAlignment="Right"
-                                           VerticalAlignment="Center" />
-                            </Grid>
-
-                            <Grid Style="{StaticResource SetRowStyle}" ColumnSpacing="14">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="默认帧率" FontSize="14" VerticalAlignment="Center" />
-                                <ctl:NoWheelComboBox Grid.Column="1" MinWidth="132" Height="32" FontSize="14"
-                                    ItemsSource="{x:Bind ViewModel.FpsOptions, Mode=OneWay}"
-                                    SelectedItem="{x:Bind ViewModel.SelectedFpsOption, Mode=TwoWay}"
-                                    AutomationProperties.Name="默认帧率"
-                                    AutomationProperties.AutomationId="DefaultFpsComboBox">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:FpsOption" xmlns:vm="using:VideoConverter.ViewModels">
-                                            <TextBlock Text="{Binding Label}" />
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ctl:NoWheelComboBox>
-                            </Grid>
-
-                            <Grid Style="{StaticResource SetRowStyle}" ColumnSpacing="14">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
-                                    <TextBlock Text="输出目录" FontSize="14" />
-                                    <TextBlock Text="留空 = 与源文件同目录" FontSize="11"
-                                               Foreground="{ThemeResource AppSubtleText}" />
-                                </StackPanel>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                    <TextBox Width="220"
-                                             Text="{x:Bind ViewModel.OutputDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                             PlaceholderText="默认为源文件目录"
-                                             AutomationProperties.Name="输出目录" AutomationProperties.AutomationId="OutputDirBox" />
-                                    <Button Style="{StaticResource IconButtonStyle}"
-                                            Foreground="{ThemeResource AccentFillColorDefaultBrush}"
-                                            Command="{x:Bind ViewModel.BrowseOutputDirectoryCommand, Mode=OneWay}"
-                                            ToolTipService.ToolTip="选择输出目录"
-                                            AutomationProperties.Name="选择输出目录"
-                                            AutomationProperties.AutomationId="BrowseOutputDirButton">
-                                        <FontIcon Glyph="&#xE8DA;" FontSize="18" />
-                                    </Button>
-                                </StackPanel>
-                            </Grid>
-
-                            <!-- 当前语义是"强制软件编码"，不是加速开关 -->
-                            <Grid Style="{StaticResource SetRowStyle}" ColumnSpacing="14">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
-                                    <TextBlock Text="强制软件编码" FontSize="14" />
-                                    <TextBlock Text="忽略硬件探测结果，改用软件编码" FontSize="11"
-                                               Foreground="{ThemeResource AppSubtleText}" />
-                                </StackPanel>
-                                <ToggleSwitch Grid.Column="1" OnContent="" OffContent="" MinWidth="0"
-                                              IsOn="{x:Bind ViewModel.ForceSoftware, Mode=TwoWay}"
-                                              AutomationProperties.Name="强制软件编码" />
-                            </Grid>
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-
                 <!-- 常规：应用行为开关，全部对应真实行为 -->
-                <Border x:Name="GroupRegular" Grid.Row="2" Grid.Column="0"
+                <Border x:Name="GroupRegular" Grid.Row="1" Grid.Column="0"
+        VerticalAlignment="Top"
                         Style="{StaticResource CardBorderStyle}" Padding="0">
                     <StackPanel>
                         <Grid Style="{StaticResource CardHeaderStyle}">
@@ -187,6 +73,32 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                    <TextBlock Text="输出目录" FontSize="14" />
+                                    <TextBlock Text="留空 = 与源文件同目录" FontSize="11"
+                                               Foreground="{ThemeResource AppSubtleText}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <TextBox Width="220"
+                                             Text="{x:Bind ViewModel.OutputDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             PlaceholderText="默认为源文件目录"
+                                             AutomationProperties.Name="输出目录" AutomationProperties.AutomationId="OutputDirBox" />
+                                    <Button Style="{StaticResource IconButtonStyle}"
+                                            Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                                            Command="{x:Bind ViewModel.BrowseOutputDirectoryCommand, Mode=OneWay}"
+                                            ToolTipService.ToolTip="选择输出目录"
+                                            AutomationProperties.Name="选择输出目录"
+                                            AutomationProperties.AutomationId="BrowseOutputDirButton">
+                                        <FontIcon Glyph="&#xE8DA;" FontSize="18" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid Style="{StaticResource SetRowStyle}" ColumnSpacing="14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
                                     <TextBlock Text="启动时恢复未完成任务" FontSize="14" />
                                     <TextBlock Text="上次未完成的任务重新入列并置为等待中，不会自动开始转换" FontSize="11"
                                                Foreground="{ThemeResource AppSubtleText}" />
@@ -201,7 +113,8 @@
                 </Border>
 
                 <!-- 界面：主题（语言已确认砍掉，不做假控件） -->
-                <Border x:Name="GroupAppearance" Grid.Row="2" Grid.Column="1"
+                <Border x:Name="GroupAppearance" Grid.Row="1" Grid.Column="1"
+        VerticalAlignment="Top"
                         Style="{StaticResource CardBorderStyle}" Padding="0">
                     <StackPanel>
                         <Grid Style="{StaticResource CardHeaderStyle}">
@@ -245,7 +158,8 @@
                 </Border>
 
                 <!-- 编码器 -->
-                <Border x:Name="GroupEncoder" Grid.Row="0" Grid.Column="1"
+                <Border x:Name="GroupEncoder" Grid.Row="2" Grid.Column="0"
+        VerticalAlignment="Top"
                         Style="{StaticResource CardBorderStyle}" Padding="0">
                     <StackPanel>
                         <Grid Style="{StaticResource CardHeaderStyle}">
@@ -290,7 +204,8 @@
                 </Border>
 
                 <!-- ffmpeg -->
-                <Border x:Name="GroupFfmpeg" Grid.Row="1" Grid.Column="0"
+                <Border x:Name="GroupFfmpeg" Grid.Row="0" Grid.Column="0"
+        VerticalAlignment="Top"
                         Style="{StaticResource CardBorderStyle}" Padding="0">
                     <StackPanel>
                         <Grid Style="{StaticResource CardHeaderStyle}">
@@ -346,7 +261,8 @@
                 </Border>
 
                 <!-- 关于 -->
-                <Border x:Name="GroupAbout" Grid.Row="1" Grid.Column="1"
+                <Border x:Name="GroupAbout" Grid.Row="0" Grid.Column="1"
+        VerticalAlignment="Top"
                         Style="{StaticResource CardBorderStyle}" Padding="0">
                     <StackPanel>
                         <Grid Style="{StaticResource CardHeaderStyle}">
