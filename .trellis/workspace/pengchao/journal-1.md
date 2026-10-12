@@ -105,3 +105,40 @@ P2 of the P1-P6 plan. Added Core-level AppSettings/AppSettingsStore with JSON pe
 ### Next Steps
 
 - 未做：窄窗单列主操作常驻、转换页 MetaLine 末尾质量档位截断、测试套件在 %TEMP% 留下大量 vc-* 目录（本轮手工清掉约 5100 个）、根目录三个旧发布目录约 1.3GB、以及若要给评审一键启动需重新引入启动脚本。
+
+
+## Session 4: 快速开始优化：dev.ps1 一键入口 + README 精简
+<!-- trellis-session: v=2 fp=2b9f020befbda6c1 -->
+
+**Date**: 2026-10-12
+**Task**: 快速开始优化：dev.ps1 一键入口 + README 精简
+**Branch**: `main`
+
+### Summary
+
+优化 README「快速开始」小节：删掉冗余的 dotnet build、把可跳过的 ffmpeg 步骤标注清楚，并新增 tools/dev.ps1 作为一条命令入口；手动四步作为等价参照完整保留。
+
+### Main Changes
+
+- 新增 tools/dev.ps1：校验 .NET SDK 主版本 >= 10（不足直接给 winget 命令而非让 MSBuild 报错）、仅在 tools/ffmpeg/ 与 PATH 都没有 ffmpeg 时才调 fetch-ffmpeg.ps1、dotnet run 自带构建所以没有单独 build 步骤；支持 -Test / -NoRun / -SkipFfmpeg / -Force
+- README「快速开始」：顶部一条命令入口，手动四步原样保留为「手动等价步骤」；删掉冗余 dotnet build；第 2 步标注 PATH 已有 ffmpeg 可跳过及其代价；补 dotnet --version 自检与 PowerShell 执行策略绕过写法；架构区 tools/ 清单补 dev.ps1
+- 行尾统一：dev.ps1 由 LF 改为 CRLF，与 tools/ 下其他脚本一致（core.autocrlf=true 下不再报 warning）
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1b5af4e` | feat(tools): add dev.ps1 one-command entry and slim down the README quick start |
+
+### Testing
+
+- [OK] ./tools/dev.ps1 默认启动成功且清理后 0 残留进程；-NoRun 构建 0 警告 0 错误；-Test 199/199 通过；-SkipFfmpeg 分支正确；脚本 AST 解析 0 错误；git ls-files --eol 与 fetch-ffmpeg.ps1 一致
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 若要给评审一键启动，可把 dev.ps1 -NoRun 的产物直接接到发布流程
+- PowerShell 7.4+ 的 PSNativeCommandUseErrorActionPreference 默认让 dotnet 的 stderr 打断 ErrorActionPreference=Stop 这个坑，目前只记在 dev.ps1 注释里，未沉淀到 .trellis/spec/

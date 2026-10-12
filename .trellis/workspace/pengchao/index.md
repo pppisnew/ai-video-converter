@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 3
+- **Total Sessions**: 4
 - **Last Active**: 2026-10-12
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~107 | Active |
+| `journal-1.md` | ~144 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 4 | 2026-10-12 | 快速开始优化：dev.ps1 一键入口 + README 精简 | `1b5af4e` | `main` |
 | 3 | 2026-10-12 | 前端重构 / 交付整理 / 新机器可启动性核查（2026-10-12） | - | `main` |
 | 2 | 2026-10-12 | P2: theme, persisted settings, per-task cancel, MetaLine fix | `d6c2dd0` | `main` |
 | 1 | 2026-10-12 | P1: thumbnail colours + danger styling (prototype-aligned) | `4afdc3c` | `main` |
