@@ -6,10 +6,91 @@
 
 | 需求 | WPF 写法 | WinUI 3 正确做法 |
 |---|---|---|
-| 窗口初始尺寸 | `Width/Height` | `AppWindow.Resize(new SizeInt32(w,h))` + `OverlappedPresenter.PreferredMinimum*` |
+| 窗口初始尺寸 | `Width/Height`（DIP） | `AppWindow.Resize(new SizeInt32(pxW, pxH))` **物理像素** + `OverlappedPresenter.PreferredMinimum*`（**DIP**）——两者单位不同，必须按 DPI 换算，见下节 |
 | 禁用一整块 UI | 容器 `IsEnabled` | `Panel`/`Border` 没有 `IsEnabled`，用 `ContentControl` 包裹 |
 | 保存文件对话框 | `SaveFileDialog.Filter` | `FileSavePicker.FileTypeChoices`（字典），**没有** `FileTypeFilter` |
 | 文件选择器 | 直接 `ShowDialog()` | `FileOpenPicker` + `InitializeWithWindow.Initialize(picker, hwnd)` |
+
+## 窗口尺寸与 DPI（物理像素 vs DIP）
+
+**症状**：代码写 `AppWindow.Resize(new SizeInt32(1180, 800))`，150% 缩放下窗口只有
+787x533 DIP，比设计稿窄一大截；同处的 `PreferredMinimumWidth = 900`（DIP）又管不住它，
+于是"最小尺寸"和"实际尺寸"互相矛盾，主操作按钮被挤出首屏。
+
+**原因**：WinUI 3 里两套单位混用——
+
+- 物理像素：`AppWindow.Resize`、Win32 的 `SetWindowPos` / `GetWindowRect` /
+  `GetWindowPos`、`GetDpiForWindow` 的坐标
+- DIP：XAML 布局尺寸、`OverlappedPresenter.PreferredMinimum*` /
+  `PreferredMaximum*`、鼠标 event 坐标
+
+**约定**：设计尺寸用 DIP 常量表达，落盘到 API 前乘 `dpi / 96`。
+
+```csharp
+private const int DesignWidth = 1180;   // DIP
+private const int DesignHeight = 800;   // DIP
+private const int MinimumWidth = 900;   // DIP
+
+[DllImport("user32.dll")]
+private static extern uint GetDpiForWindow(IntPtr hwnd);
+
+private void ConfigureWindow()
+{
+    var hwnd = WindowNative.GetWindowHandle(this);
+    var dpi = GetDpiForWindow(hwnd);
+    var scale = dpi == 0 ? 1.0 : dpi / 96.0;   // dpi==0 必须兜底
+
+    var width = (int)Math.Round(DesignWidth * scale);
+    var height = (int)Math.Round(DesignHeight * scale);
+
+    // 不允许开出屏幕外；夹取时以最小尺寸为下限，避免"最小值反被压小"
+    var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary);
+    if (area is not null)
+    {
+        var margin = (int)Math.Round(24 * scale);
+        width = Math.Min(width, Math.Max(area.WorkArea.Width - margin, (int)Math.Round(MinimumWidth * scale)));
+        height = Math.Min(height, Math.Max(area.WorkArea.Height - margin, (int)Math.Round(MinimumHeight * scale)));
+    }
+
+    AppWindow.Resize(new SizeInt32(width, height));
+    if (AppWindow.Presenter is OverlappedPresenter presenter)
+    {
+        presenter.PreferredMinimumWidth = MinimumWidth;    // DIP
+        presenter.PreferredMinimumHeight = MinimumHeight;  // DIP
+    }
+}
+```
+
+> **Warning**: `PreferredMinimum*` 只约束**用户拖拽**，程序化 `Resize` / `SetWindowPos`
+> 不受其限制。UI 自动化脚本若用 `SetWindowPos` 压到最小尺寸以下，可以造出应用真实运行中
+> 到不了的尺寸，别据此判断布局缺陷。
+
+## 自动化截图（WinUI 3）
+
+**约定**：抓 WinUI 3 窗口一律用 `PrintWindow` + `PW_RENDERFULLCONTENT`，
+并且调用前先声明 Per-Monitor-V2 DPI 感知。
+
+```powershell
+[DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+[DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
+$ok = [Shot]::PrintWindow($hwnd, $hdc, 2)   # 2 = PW_RENDERFULLCONTENT
+```
+
+**原因**：
+
+- `CopyFromScreen` 拍的是屏幕区域，压在上层的窗口会一起进图（本项目实测被 Codex 窗口遮住右半边）。
+- 不设 DPI 感知时，`GetWindowRect` 的坐标会被虚拟化：150% 缩放下得到 2/3 的尺寸，
+  截图区域也跟着错位（787x533 而非 1180x800）。
+- `PrintWindow` 失败时再回退 `CopyFromScreen`。
+
+## 页面骨架约定
+
+- **页标题归属**：页面标题显示在窗口头部（`HeaderTitle`，由导航切换时更新），
+  页面自身不再重复渲染标题；唯一的 `PageTitleStyle` 用法应出现在 MainWindow。
+- **主操作常驻**：主操作按钮（如"开始转换"）与进度必须放在 `ScrollViewer` **之外**的
+  固定行，窗口再矮也不能被滚动带走。空闲时隐藏进度条与进度文本，避免与底部状态栏重复文案。
+- **空态只留一件事**：无数据时不显示 `-` 占位、空缩略图框和不可用控件，
+  只保留引导动作（拖放区 + 选择按钮）。空态与有数据态用同一套 `Visibility` 绑定切换。
 
 ## 无障碍 / 可测试性
 
@@ -51,6 +132,28 @@
   导致 UIA 按 Name 匹配失败。
 - 所有需要自动化操作的控件必须设置 ASCII 的 `AutomationProperties.AutomationId`，
   测试脚本按 Id 定位；中文只用于人眼可见的 `AutomationProperties.Name`。
+- **脚本文件本身也要带 BOM**：无 BOM 的 `.ps1` 会被 Windows PowerShell 5.1 按 ANSI 解码，
+  脚本**内部**写的中文字面量同样变成乱码，按 Name 的查找会静默失败。
+  工具脚本统一存成 `UTF-8 with BOM`（首三字节 `EF BB BF`）。
+- **同名元素要按类型过滤**：页标题与导航项同名（转换 / 队列 / 设置）后，
+  `FindFirst(Name=...)` 会命中标题 TextBlock 而不是导航项（标题没有 SelectionItem/Invoke 模式，
+  表现为 "no usable pattern"）。导航项要按 `ControlType=ListItem` 过滤
+  （ClassName 是全限定的 `Microsoft.UI.Xaml.Controls.NavigationViewItem`）。
+  查找策略应为：`AutomationId` → 限定 `ControlType` 的 Name → 序号回退。
+- **同一动作的多个入口都要给 Id**：例如"选择文件"在空态是 `PickFileButton`、
+  在有文件态是 `AddFilesButton`，脚本按顺序尝试，避免依赖中文 Name。
+  隐藏（`Visibility=Collapsed`）的按钮可能仍在 UIA 树里，
+  `InvokePattern` 调用要 try/catch，否则会中断整个脚本。
+
+### Shell 文件对话框（自动化不稳定，优先人工）
+
+新版 Shell 打开对话框的遗留控件不响应自动化：`Edit`(aid=1148) 不支持 `ValuePattern`、
+`打开`(aid=1) 不支持 `InvokePattern`，`WM_SETTEXT` / `BM_CLICK` 也无效。
+可行但**不稳定**的路径是：鼠标点进文件名框 → `Ctrl+A` → `Ctrl+V`（剪贴板粘贴）→ 回车。
+逐字 `SendKeys` 会被输入框的自动补全吞掉/改写，不推荐。
+
+> **Warning**: 该文件名框很窄，光标在末尾时只显示**尾部**，看起来像"开头被吞掉"，
+> 实际内容完整。不要据此判断输入失败——按 Home 或读回全文再判断。
 
 ## 滚轮误触（WinUI 3 已知行为）
 

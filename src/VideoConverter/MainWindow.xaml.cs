@@ -8,11 +8,21 @@ using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
 using Windows.Storage;
 using WinRT.Interop;
+using System.Runtime.InteropServices;
 
 namespace VideoConverter;
 
 public sealed partial class MainWindow : Window
 {
+    private const int DesignWidth = 1180;
+    private const int DesignHeight = 800;
+    private const int MinimumWidth = 900;
+    private const int MinimumHeight = 600;
+    private const int ScreenMargin = 24;
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hwnd);
+
     private static readonly string[] VideoExtensions =
     {
         ".mp4", ".mov", ".mkv", ".avi", ".webm", ".flv", ".wmv", ".ts",
@@ -32,11 +42,33 @@ public sealed partial class MainWindow : Window
 
     private void ConfigureWindow()
     {
-        AppWindow.Resize(new SizeInt32(1180, 800));
+        // AppWindow.Resize 的单位是物理像素，而 PreferredMinimum* 是 DIP。
+        // 固定写 1180x800 时，150% DPI 下实际只有 787x533 DIP，比最小宽度还窄。
+        var hwnd = WindowNative.GetWindowHandle(this);
+        var dpi = GetDpiForWindow(hwnd);
+        var scale = dpi == 0 ? 1.0 : dpi / 96.0;
+
+        var width = (int)Math.Round(DesignWidth * scale);
+        var height = (int)Math.Round(DesignHeight * scale);
+
+        // 不允许开出屏幕外：按当前显示器工作区夹取，并留出 24 DIP 边距。
+        var displayArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary);
+        if (displayArea is not null)
+        {
+            var margin = (int)Math.Round(ScreenMargin * scale);
+            var minimumWidth = (int)Math.Round(MinimumWidth * scale);
+            var minimumHeight = (int)Math.Round(MinimumHeight * scale);
+            var maxWidth = Math.Max(displayArea.WorkArea.Width - margin, minimumWidth);
+            var maxHeight = Math.Max(displayArea.WorkArea.Height - margin, minimumHeight);
+            width = Math.Min(width, maxWidth);
+            height = Math.Min(height, maxHeight);
+        }
+
+        AppWindow.Resize(new SizeInt32(width, height));
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
-            presenter.PreferredMinimumWidth = 900;
-            presenter.PreferredMinimumHeight = 600;
+            presenter.PreferredMinimumWidth = MinimumWidth;
+            presenter.PreferredMinimumHeight = MinimumHeight;
         }
     }
 
@@ -44,6 +76,13 @@ public sealed partial class MainWindow : Window
     {
         if (args.SelectedItem is NavigationViewItem item && item.Tag is string tag)
         {
+            HeaderTitle.Text = tag switch
+            {
+                "Queue" => "队列",
+                "Settings" => "设置",
+                _ => "转换",
+            };
+
             var pageType = tag switch
             {
                 "Queue" => typeof(QueuePage),

@@ -100,6 +100,12 @@
 
 ### 实施记录（2026-10-12）
 
+二期完成后的实测评审结论与三期方案见 [ui-optimization-v2.md](./ui-optimization-v2.md)：
+核心发现是 `AppWindow.Resize` 用了物理像素，150% DPI 下应用只有 787x533 DIP 启动，
+导致主操作不在首屏；方案按 P0（骨架与首屏）→ P1（设置页与令牌）→ P2（打磨）分阶段。
+
+---
+
 五步全部完成，提交见 git log。要点：
 - Page 必须暴露 ViewModel 属性，否则 x:Bind 触发 WMC9999 编译器 NRE
 - 全局样式表 Styles/Overrides.xaml（三主题字典）已建并被 App.xaml 合并

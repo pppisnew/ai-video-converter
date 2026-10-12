@@ -13,13 +13,12 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- 标题 + 实时汇总 -->
+        <!-- 实时汇总（页标题由窗口头部承担） -->
         <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="转换队列" Style="{StaticResource PageTitleStyle}" VerticalAlignment="Center" />
             <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.QueueSummaryText, Mode=OneWay}"
                        Style="{StaticResource SubtleTextStyle}" VerticalAlignment="Center" />
         </Grid>

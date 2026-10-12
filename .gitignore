@@ -87,3 +87,5 @@ tcjob.cs
 fbrel.json
 fbtree.json
 rl.json
+# 任务验收截图（本地产物，不入库）
+.trellis/tasks/*/shots/

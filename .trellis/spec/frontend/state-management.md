@@ -12,14 +12,28 @@
   `OnPropertyChanged(nameof(...))`
 - 异步命令用 `[RelayCommand] private async Task XxxAsync()`，框架自动管理 CanExecute
 
-## 不要在 x:Bind 上用 Converter（Window 根元素）
+## Converter 的使用边界
+
+**规则不是"不用 Converter"，而是"不要在 Window 根目标的 x:Bind 上用 Converter"。**
 
 `x:Bind` + `Converter={StaticResource ...}` 若绑定根是 Window，生成代码会调用
 `SetConverterLookupRoot(this)`，而 `Window` 不是 `FrameworkElement`，编译报 CS1503。
+`MainWindow.xaml` 里出现任何 `Converter=` 都会触发；目前该文件确实一处都没有。
 
-做法：由 ViewModel 直接暴露 `Brush` / `Visibility` 属性
-（见 `StatusBrush`、`FfmpegStatusBrush`、`FfmpegWarningVisibility`），XAML 直接绑定。
-本项目因此没有定义任何 IValueConverter。
+**Page / DataTemplate 里可以正常用**（查找根是 `FrameworkElement`）。本项目现有转换器
+注册在 `App.xaml`：
+
+| Key | 类型 | 用途 |
+|---|---|---|
+| `NotNullToBoolean` | `NotNullToBooleanConverter` | 非空判断 |
+| `InverseBoolToBoolean` | `InverseBoolToVisibilityConverter` | 布尔取反 |
+| `StateToGlyph` | `QueueStateToGlyphConverter` | 队列状态 → 图标字符 |
+| `StateToBrush` | `QueueStateToBrushConverter` | 队列状态 → 颜色 |
+| `BoolToVisibility` | `BoolToVisibilityConverter` | bool → Visibility（x:Bind 不隐式转换） |
+| `BoolToVisibilityInverse` | `InverseBoolToVisibilityConverter` | 上一项的取反（空态/有数据态切换） |
+
+MainWindow（Window 根）需要 Visibility / Brush 时，仍由 ViewModel 直接暴露属性：
+`StatusBrush`、`FfmpegStatusBrush`、`FfmpegWarningVisibility`。
 
 ## 进度回传
 

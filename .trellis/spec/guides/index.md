@@ -67,6 +67,20 @@ These guides help you **ask the right questions before coding**.
 
 ---
 
+### When Touching Window Sizing or Page Layout
+
+- [ ] 这个尺寸是**物理像素**还是 **DIP**？`AppWindow.Resize`、`SetWindowPos`、
+  `GetWindowRect` 用物理像素；XAML 布局与 `PreferredMinimum*` 用 DIP → 落盘前乘 `dpi/96`
+- [ ] 主操作按钮会不会被滚动带走？它必须在 `ScrollViewer` 之外
+- [ ] 窗口缩到最小、默认、宽屏三档分别验证过了吗？（本项目曾因单位混用导致主操作
+  在首屏完全不可见）
+- [ ] 自动化截图前是否声明了 Per-Monitor-V2 DPI 感知？
+
+→ 详见 [frontend/component-guidelines.md](../frontend/component-guidelines.md) 的
+"窗口尺寸与 DPI"、"自动化截图"、"页面骨架约定"
+
+---
+
 ## Pre-Modification Rule (CRITICAL)
 
 > **Before changing ANY value, ALWAYS search first!**

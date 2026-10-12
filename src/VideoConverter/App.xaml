@@ -15,6 +15,7 @@
             <helpers:QueueStateToGlyphConverter x:Key="StateToGlyph" />
             <helpers:QueueStateToBrushConverter x:Key="StateToBrush" />
             <helpers:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+            <helpers:InverseBoolToVisibilityConverter x:Key="BoolToVisibilityInverse" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

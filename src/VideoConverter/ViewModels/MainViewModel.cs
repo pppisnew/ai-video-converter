@@ -47,6 +47,7 @@ public sealed partial class MainViewModel : ObservableObject
             FfmpegStatus = $"ffmpeg 就绪 · {DescribeSource(binaries.Source)} · {ShortVersion(locator.GetVersion(binaries))}";
             FfmpegStatusBrush = ReadyBrush;
             FfmpegReady = true;
+            FfmpegShortStatus = "ffmpeg 就绪";
         }
         else
         {
@@ -54,6 +55,7 @@ public sealed partial class MainViewModel : ObservableObject
             FfmpegStatus = "未找到 ffmpeg · 转换功能不可用";
             FfmpegStatusBrush = WarningBrush;
             FfmpegWarningVisibility = Visibility.Visible;
+            FfmpegShortStatus = "未找到 ffmpeg";
         }
 
         Queue = new ObservableCollection<QueueItem>();
@@ -272,6 +274,10 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private Visibility _ffmpegWarningVisibility = Visibility.Collapsed;
+
+    /// <summary>顶部药丸里的短状态；完整版本/来源/路径放在 FfmpegStatus 走 ToolTip。</summary>
+    [ObservableProperty]
+    private string _ffmpegShortStatus = string.Empty;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanStartConvert))]
@@ -610,7 +616,8 @@ public sealed partial class MainViewModel : ObservableObject
         {
             await _thumbnailService.CaptureAsync(videoPath, at, output);
             using var stream = File.OpenRead(output);
-            var bitmap = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
+            // 缩略图按 220 DIP 显示，高 DPI 下按 440 物理像素解码才不会发虚
+            var bitmap = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage { DecodePixelWidth = 440 };
             await bitmap.SetSourceAsync(stream.AsRandomAccessStream());
             Thumbnail = bitmap;
         }

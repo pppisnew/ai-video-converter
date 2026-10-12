@@ -16,15 +16,22 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal" Spacing="10">
-                <FontIcon Glyph="&#xE8B7;" FontSize="16" VerticalAlignment="Center" />
-                <TextBlock Text="视频格式转换器" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
-            </StackPanel>
+            <!-- 当前页标题：由 Nav_SelectionChanged 更新；应用名交给 OS 标题栏，不再重复 -->
+            <TextBlock x:Name="HeaderTitle" Text="转换" Style="{StaticResource PageTitleStyle}"
+                       VerticalAlignment="Center" />
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <InfoBadge x:Name="FfmpegBadge" VerticalAlignment="Center"
-                           Foreground="{x:Bind ViewModel.FfmpegStatusBrush, Mode=OneWay}" />
-                <TextBlock Text="{x:Bind ViewModel.FfmpegStatus, Mode=OneWay}" VerticalAlignment="Center"
-                           FontSize="12" Opacity="0.85" />
+                <!-- 紧凑状态药丸：圆点 + 短状态，完整版本/来源/路径走 ToolTip -->
+                <Border CornerRadius="12" Padding="10,4"
+                        Background="{ThemeResource AppCardBackground}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                        ToolTipService.ToolTip="{x:Bind ViewModel.FfmpegStatus, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <InfoBadge x:Name="FfmpegBadge" VerticalAlignment="Center"
+                                   Foreground="{x:Bind ViewModel.FfmpegStatusBrush, Mode=OneWay}" />
+                        <TextBlock Text="{x:Bind ViewModel.FfmpegShortStatus, Mode=OneWay}"
+                                   FontSize="12" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
                 <Button Content="获取 ffmpeg" Padding="10,3" FontSize="12"
                         Visibility="{x:Bind ViewModel.FfmpegWarningVisibility, Mode=OneWay}"
                         Command="{x:Bind ViewModel.OpenFfmpegDownloadPageCommand, Mode=OneWay}" />
@@ -34,16 +41,20 @@
         <NavigationView Grid.Row="1"
                         IsBackButtonVisible="Collapsed"
                         IsSettingsVisible="False"
-                        PaneDisplayMode="Left"
+                        PaneDisplayMode="Auto"
+                        CompactModeThresholdWidth="600"
+                        ExpandedModeThresholdWidth="1000"
                         OpenPaneLength="200"
                         SelectionChanged="Nav_SelectionChanged">
             <NavigationView.MenuItems>
-                <NavigationViewItem Content="转换" Tag="Convert" IsSelected="True">
+                <NavigationViewItem Content="转换" Tag="Convert" IsSelected="True"
+                                    AutomationProperties.AutomationId="NavConvert">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE768;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="队列" Tag="Queue">
+                <NavigationViewItem Content="队列" Tag="Queue"
+                                    AutomationProperties.AutomationId="NavQueue">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE8A5;" />
                     </NavigationViewItem.Icon>
@@ -52,7 +63,8 @@
                        Visibility="{x:Bind ViewModel.QueueBadgeVisibility, Mode=OneWay}" />
                     </NavigationViewItem.InfoBadge>
                 </NavigationViewItem>
-                <NavigationViewItem Content="设置" Tag="Settings">
+                <NavigationViewItem Content="设置" Tag="Settings"
+                                    AutomationProperties.AutomationId="NavSettings">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE713;" />
                     </NavigationViewItem.Icon>

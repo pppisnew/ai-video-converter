@@ -6,8 +6,6 @@
     <ScrollViewer Style="{StaticResource PageScrollViewerStyle}" Padding="20,16">
         <StackPanel MaxWidth="720" Spacing="12">
 
-            <TextBlock Text="设置" Style="{StaticResource PageTitleStyle}" />
-
             <!-- 编码器 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">

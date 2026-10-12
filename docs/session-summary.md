@@ -370,3 +370,72 @@ tools/ui-nav.ps1（UIA 点击/选中控件）。
 - 转换中汇总文本/进度条实时更新（AttachQueueEvents 修复）
 - 全选/取消全选、单项移除、清除已完成、定位产物、上移/下移
 - 取消当前/全部停止后的状态与残留文件处理
+
+---
+
+## 三期 P0：布局根因修复与首屏主操作（2026-10-12）
+
+用户对二期结果仍不满意，要求先给方案。方案见
+`.trellis/tasks/10-11-frontend-polish/ui-optimization-v2.md`（诊断 + P0/P1/P2 三阶段）。
+
+### 根因（实测，不是观感）
+
+`MainWindow.ConfigureWindow()` 用 `AppWindow.Resize(new SizeInt32(1180, 800))`，
+该 API 的单位是**物理像素**；同一处又用 DIP 设了 `PreferredMinimumWidth = 900`，两者矛盾，
+而且 `PreferredMinimum*` 只约束用户拖拽、管不住程序化 Resize。150% DPI 下实测启动尺寸：
+
+```
+initial: 1180x800 physical, dpi=144 => 787x533 DIP
+```
+
+比设计稿窄 113 DIP，导航栏又固定占 200 DIP（25%），于是「转换设置」卡片与
+**「开始转换」按钮在首屏完全不可见**。这才是"UI 怎么改都不行"的来源。
+
+### 用户批准的三项决策
+
+1. **导航自适应**（批准）：≥1000 DIP 展开、600–1000 DIP 图标栏、<600 DIP 收起；
+   队列项 InfoBadge 保留，保证导航收起时仍能感知后台任务。
+2. **队列工具栏二级化**（批准）：一级只留 全选 / 开始转换 / 取消当前 / 全部停止；
+   重试失败项 / 清除已完成 / 清空队列 收进「更多」；
+   **定位到文件下沉到队列项行内按钮与右键菜单**（属于单文件操作，不放全局工具栏）。
+3. **P0 优先级**：DPI 修正 + 固定底部操作条（必须放在 ScrollViewer 之外）+ 空态重做 +
+   头部去重 + 导航自适应。
+
+### P0 完成效果（主会话逐项截图验证）
+
+- 启动尺寸 787x533 DIP → **1180x800 DIP**
+- 「开始转换」在 800x600 / 900x600 / 1180x800 DIP 下均常驻可见
+- 窗口缩到 800 DIP 时导航正确折叠为图标栏
+- 转换页空态只剩居中拖放区 + 选择按钮；进度区空闲时不显示，不再与底部状态栏重复
+- 页内标题删除，统一由窗口头部显示；ffmpeg 长版本串收成状态药丸，
+  完整版本/来源进 ToolTip 与设置页
+- 端到端：2 个文件入队 → 一键开始 → `共 2 项 · 转换中 1 · 等待中 1` → 已完成 2，
+  产物冲突后缀 `_converted_1` 正确，定位按钮出现
+- 构建 0 警告 0 错误；142 个测试全绿
+
+### 工具与规范更新
+
+- 新增 `tools/ui-verify.ps1`（按 DIP 指定多档窗口尺寸、跨页自动截图）；
+  新增 `tools/ui-pick.ps1`（文件对话框辅助，脚本内已标注不稳定）
+- `tools/ui-shot.ps1`、`tools/ui-nav.ps1` 改用 PrintWindow(PW_RENDERFULLCONTENT) + DPI 感知，
+  并修复无 BOM 导致的中文乱码问题
+- 验收截图存 `shots/`，已加入 .gitignore（`.trellis/tasks/*/shots/`）
+
+### 踩坑记录（已同步进 frontend spec）
+
+1. 物理像素 vs DIP：`AppWindow.Resize`/`GetWindowRect`/`SetWindowPos` 用物理像素，
+   `PreferredMinimum*` 用 DIP；截图脚本必须先设 Per-Monitor-V2 DPI 感知，
+   否则 150% 下拿到 2/3 的错误坐标。
+2. WinUI 3 窗口截图用 `PrintWindow(..., PW_RENDERFULLCONTENT=2)`，
+   `CopyFromScreen` 会把上层窗口一起拍进去。
+3. 无 BOM 的 `.ps1` 会被 Windows PowerShell 5.1 按 ANSI 解码，脚本内中文字面量变乱码，
+   按 Name 的 UIA 查找静默失败；工具脚本一律带 BOM 且优先按 AutomationId 定位。
+4. 页头标题与导航项同名后，按 Name 查找会命中标题；需按 `ControlType=ListItem` 筛选。
+5. Shell 文件对话框文件名框很窄，光标在末尾时只显示尾部，
+   看起来像"开头被吞"其实是横向滚动；剪贴板粘贴 + 回车比逐字 SendKeys 可靠。
+
+### 待做
+
+- **P1**：设置页改分组设置行、设计令牌（字号/间距）、拖拽高亮反馈、
+  状态栏改 InfoBar、缩略图卡片信息去重（与 BUG-01 状态机一起验证）
+- **P2**：队列卡片内进度条、工具栏「更多」菜单 + 定位下沉、窗口尺寸记忆、输出路径可复制
