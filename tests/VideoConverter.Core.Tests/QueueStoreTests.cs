@@ -68,6 +68,8 @@ public class QueueStoreTests
             };
 
             var pending = new QueueItem(pendingInput, pendingInput + ".mkv", settings, SampleInfo(pendingInput));
+            pending.OverrideContainer = ".mkv";
+            pending.OverrideCrf = 16;
             var failed = new QueueItem(failedInput, failedInput + ".mkv", settings, SampleInfo(failedInput));
             failed.MarkFailed("编码器不可用");
 
@@ -89,6 +91,10 @@ public class QueueStoreTests
             Assert.Equal(30, first.Settings.Fps);
             Assert.Equal(192, first.Settings.AudioBitrateKbps);
 
+            // 逐项覆盖原样带回：恢复出来的行仍然"已覆盖"，不会悄悄退回继承全局
+            Assert.Equal(".mkv", first.OverrideContainer);
+            Assert.Equal(16, first.OverrideCrf);
+
             // 媒体信息摘要原样带回：恢复出来的行不用重新跑 ffprobe
             Assert.NotNull(first.Info);
             Assert.Equal(TimeSpan.FromSeconds(42), first.Info!.Duration);
@@ -99,6 +105,8 @@ public class QueueStoreTests
             Assert.Equal(320_000, first.Info.BitRate);
 
             Assert.Equal(failedInput, loaded.Items[1].InputPath);
+            Assert.Null(loaded.Items[1].OverrideContainer);
+            Assert.Null(loaded.Items[1].OverrideCrf);
         }
         finally
         {

@@ -19,6 +19,7 @@
             <SolidColorBrush x:Key="AppDropzoneStroke" Color="#29000000" />
             <SolidColorBrush x:Key="AppProgressTrack" Color="#29000000" />
             <SolidColorBrush x:Key="AppAccentSoftBackground" Color="#1A0078D4" />
+            <SolidColorBrush x:Key="AppAccentForeground" Color="#0078D4" />
             <SolidColorBrush x:Key="AppSuccessSoftBackground" Color="#1A0F7B0F" />
             <SolidColorBrush x:Key="AppDangerSoftBackground" Color="#1AC42B1C" />
             <SolidColorBrush x:Key="AppDangerForeground" Color="#C42B1C" />
@@ -37,6 +38,7 @@
             <SolidColorBrush x:Key="AppDropzoneStroke" Color="#33FFFFFF" />
             <SolidColorBrush x:Key="AppProgressTrack" Color="#33FFFFFF" />
             <SolidColorBrush x:Key="AppAccentSoftBackground" Color="#1A0078D4" />
+            <SolidColorBrush x:Key="AppAccentForeground" Color="#4CC2FF" />
             <SolidColorBrush x:Key="AppSuccessSoftBackground" Color="#1A0F7B0F" />
             <SolidColorBrush x:Key="AppDangerSoftBackground" Color="#1AC42B1C" />
             <SolidColorBrush x:Key="AppDangerForeground" Color="#E8736A" />
@@ -55,6 +57,7 @@
             <SolidColorBrush x:Key="AppDropzoneStroke" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="AppProgressTrack" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="AppAccentSoftBackground" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AppAccentForeground" Color="{ThemeResource SystemColorHighlightTextColor}" />
             <SolidColorBrush x:Key="AppSuccessSoftBackground" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="AppDangerSoftBackground" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="AppDangerForeground" Color="{ThemeResource SystemColorWindowTextColor}" />

@@ -150,7 +150,8 @@
                                                             <ColumnDefinition Width="Auto" />
                                                             <ColumnDefinition Width="*" />
                                                         </Grid.ColumnDefinitions>
-                                                        <Border Grid.Column="0" Style="{StaticResource BadgeBorderStyle}"
+                                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+                                                            <Border Style="{StaticResource BadgeBorderStyle}"
                                                                 HorizontalAlignment="Left"
                                                                 Background="{x:Bind State, Converter={StaticResource StateToBadgeBrush}, Mode=OneWay}">
                                                             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -162,6 +163,18 @@
                                                                            Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}" />
                                                             </StackPanel>
                                                         </Border>
+                                                            <!-- 参数来源：这一行是逐项覆盖，还是跟随右侧面板 -->
+                                                            <Border Style="{StaticResource BadgeBorderStyle}" Background="{ThemeResource AppAccentSoftBackground}"
+                                                                    Visibility="{x:Bind HasOverride, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                                                                <TextBlock Text="已覆盖" FontSize="11" VerticalAlignment="Center"
+                                                                           Foreground="{ThemeResource AppAccentForeground}" />
+                                                            </Border>
+                                                            <Border Style="{StaticResource BadgeBorderStyle}" Background="{ThemeResource AppBadgeNeutralBackground}"
+                                                                    Visibility="{x:Bind HasOverride, Mode=OneWay, Converter={StaticResource BoolToVisibilityInverse}}">
+                                                                <TextBlock Text="继承全局" FontSize="11" VerticalAlignment="Center"
+                                                                           Foreground="{ThemeResource AppSubtleText}" />
+                                                            </Border>
+                                                        </StackPanel>
                                                         <!-- 失败原因紧跟徽章：危险色、省略号、悬停看全文 -->
                                                         <TextBlock Grid.Column="1" Text="{x:Bind Error, Mode=OneWay}" FontSize="12"
                                                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
@@ -190,6 +203,61 @@
                                                             AutomationProperties.Name="下移该队列项"
                                                             AutomationProperties.AutomationId="MoveDownButton">
                                                         <FontIcon Glyph="&#xE74B;" FontSize="13" />
+                                                    </Button>
+                                                    <!-- 参数覆盖：行内保持只读，避免下拉挤掉文件名与元信息行 -->
+                                                    <Button Style="{StaticResource SubtleIconButtonStyle}" Width="26" Height="26"
+                                                            ToolTipService.ToolTip="单独设置这一项的参数"
+                                                            AutomationProperties.Name="单独设置该项参数"
+                                                            AutomationProperties.AutomationId="OverrideButton">
+                                                        <FontIcon Glyph="&#xE713;" FontSize="13" />
+                                                        <Button.Flyout>
+                                                            <Flyout>
+                                                                <StackPanel Width="248" Spacing="12">
+                                                                    <StackPanel Spacing="2">
+                                                                        <TextBlock Text="该项参数" FontSize="14" FontWeight="SemiBold" />
+                                                                        <TextBlock Text="只覆盖这里改动的项，其余跟随右侧面板" FontSize="11"
+                                                                                   Foreground="{ThemeResource AppSubtleText}"
+                                                                                   TextWrapping="Wrap" />
+                                                                    </StackPanel>
+                                                                    <StackPanel Spacing="4">
+                                                                        <TextBlock Text="目标格式" FontSize="12"
+                                                                                   Foreground="{ThemeResource AppSubtleText}" />
+                                                                        <ctl:NoWheelComboBox HorizontalAlignment="Stretch"
+                                                                            ItemsSource="{x:Bind models:QueueItem.OverrideContainerChoices}"
+                                                                            SelectedItem="{x:Bind OverrideContainerSelection, Mode=TwoWay}"
+                                                                            AutomationProperties.Name="覆盖目标格式"
+                                                                            AutomationProperties.AutomationId="OverrideContainerComboBox">
+                                                                            <ComboBox.ItemTemplate>
+                                                                                <DataTemplate>
+                                                                                    <TextBlock Text="{Binding Converter={StaticResource ExtensionLabel}}" />
+                                                                                </DataTemplate>
+                                                                            </ComboBox.ItemTemplate>
+                                                                        </ctl:NoWheelComboBox>
+                                                                    </StackPanel>
+                                                                    <StackPanel Spacing="4">
+                                                                        <TextBlock Text="质量" FontSize="12"
+                                                                                   Foreground="{ThemeResource AppSubtleText}" />
+                                                                        <ctl:NoWheelComboBox HorizontalAlignment="Stretch"
+                                                                            ItemsSource="{x:Bind models:QueueItem.OverrideQualityChoices}"
+                                                                            SelectedItem="{x:Bind OverrideQualitySelection, Mode=TwoWay}"
+                                                                            AutomationProperties.Name="覆盖质量"
+                                                                            AutomationProperties.AutomationId="OverrideQualityComboBox" />
+                                                                    </StackPanel>
+                                                                    <Button Style="{StaticResource SubtleButtonStyle}"
+                                                                            HorizontalAlignment="Stretch"
+                                                                            Click="ResetOverrideButton_Click"
+                                                                            Visibility="{x:Bind HasOverride, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                                                                            AutomationProperties.Name="恢复继承全局"
+                                                                            AutomationProperties.AutomationId="ResetOverrideButton">
+                                                                        <StackPanel Orientation="Horizontal" Spacing="6"
+                                                                                    HorizontalAlignment="Center">
+                                                                            <FontIcon Glyph="&#xE72C;" FontSize="12" />
+                                                                            <TextBlock Text="恢复继承" />
+                                                                        </StackPanel>
+                                                                    </Button>
+                                                                </StackPanel>
+                                                            </Flyout>
+                                                        </Button.Flyout>
                                                     </Button>
                                                     <Button Style="{StaticResource DangerHoverIconButtonStyle}"
                                                             VerticalAlignment="Center"
@@ -330,7 +398,7 @@
                                           VerticalAlignment="Center" />
                                 <TextBlock Grid.Column="1" Text="输出设置" Style="{StaticResource CardTitleStyle}"
                                            VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="2" Text="应用于所有待转换文件"
+                                <TextBlock Grid.Column="2" Text="应用到所有未单独设置的任务"
                                            Style="{StaticResource CaptionTextStyle}" VerticalAlignment="Center" />
                             </Grid>
 

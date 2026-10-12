@@ -126,4 +126,13 @@ public sealed partial class ConvertPage : Page
             ViewModel.MoveItemDown(item);
         }
     }
+
+    /// <summary>行内"恢复继承"：清掉该项的两项覆盖，重新跟随右侧面板。</summary>
+    private void ResetOverrideButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: QueueItem item })
+        {
+            item.ResetOverride();
+        }
+    }
 }

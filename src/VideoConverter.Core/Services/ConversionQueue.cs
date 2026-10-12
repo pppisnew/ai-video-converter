@@ -41,7 +41,7 @@ public interface IConversionQueue
 
     /// <summary>Supplies the live settings captured when each job starts.</summary>
     Func<ConversionSettings>? SettingsProvider { get; set; }
-    string ResolveOutputPathFor(string inputPath, ConversionSettings settings);
+    string ResolveOutputPathFor(string inputPath, ConversionSettings settings, string? excludeItemId = null);
 
     int RetryFailed();
 
@@ -225,8 +225,12 @@ public sealed class ConversionQueue : IConversionQueue
 
                 // Capture the live settings now that the job actually starts, so panel
                 // tweaks made while earlier jobs ran still apply to the rest of the queue.
+                // 逐项覆盖只叠加容器与质量两个字段，其余仍取这份全局设置（字段级覆盖）。
                 var liveSettings = SettingsProvider?.Invoke() ?? item.Settings;
-                var liveOutput = ResolveOutputPath(item.InputPath, liveSettings);
+                var effectiveSettings = item.ApplyOverride(liveSettings);
+                var liveOutput = ResolveOutputPath(item.InputPath, effectiveSettings, item.Id);
+                // 项里存的是"全局面板"这一份（含生效输出路径）；覆盖值留在 Override* 字段，
+                // 这样清掉覆盖后行文案立刻回到面板值，而不会把上次的覆盖值当成继承值展示。
                 item.UpdateSettings(liveSettings, liveOutput);
 
                 using var itemCts = CancellationTokenSource.CreateLinkedTokenSource(linkedCts.Token);
@@ -242,7 +246,7 @@ public sealed class ConversionQueue : IConversionQueue
                 try
                 {
                     var result = await _conversionService.ConvertAsync(
-                        item.InputPath, item.OutputPath, item.Settings, progress, itemCts.Token);
+                        item.InputPath, item.OutputPath, effectiveSettings, progress, itemCts.Token);
 
                     if (result.Success)
                     {
@@ -310,10 +314,15 @@ public sealed class ConversionQueue : IConversionQueue
     /// 冲突时追加 _1/_2… 序号，单调递增、不回收。
     /// </summary>
     /// <summary>Public wrapper so the UI can recompute an item's output path.</summary>
-    public string ResolveOutputPathFor(string inputPath, ConversionSettings settings) =>
-        ResolveOutputPath(inputPath, settings);
+    public string ResolveOutputPathFor(string inputPath, ConversionSettings settings, string? excludeItemId = null) =>
+        ResolveOutputPath(inputPath, settings, excludeItemId);
 
-    internal string ResolveOutputPath(string inputPath, ConversionSettings settings)
+    /// <summary>
+    /// 计算输出路径。<paramref name="excludeItemId"/> 用于排除"这一项自己"：
+    /// 重新解析时若把它自己当前的输出路径也算成占用，就会莫名其妙多出 _1 后缀
+    /// （恢复出来的任务尤其明显——它的输出路径本来就是上次算好的那个）。
+    /// </summary>
+    internal string ResolveOutputPath(string inputPath, ConversionSettings settings, string? excludeItemId = null)
     {
         var directory = OutputDirectory ?? Path.GetDirectoryName(inputPath);
         var name = Path.GetFileNameWithoutExtension(inputPath) ?? "output";
@@ -326,7 +335,7 @@ public sealed class ConversionQueue : IConversionQueue
             return string.IsNullOrEmpty(directory) ? fileName : Path.Combine(directory, fileName);
         }
 
-        if (IsFree(Build(null)))
+        if (IsFree(Build(null), excludeItemId))
         {
             return Build(null);
         }
@@ -334,7 +343,7 @@ public sealed class ConversionQueue : IConversionQueue
         for (var index = 1; index < 1000; index++)
         {
             var candidate = Build(index);
-            if (IsFree(candidate))
+            if (IsFree(candidate, excludeItemId))
             {
                 return candidate;
             }
@@ -343,7 +352,8 @@ public sealed class ConversionQueue : IConversionQueue
         return Build(Guid.NewGuid().GetHashCode());
     }
 
-    private bool IsFree(string candidatePath) =>
+    private bool IsFree(string candidatePath, string? excludeItemId) =>
         !File.Exists(candidatePath)
-        && !_items.Any(i => string.Equals(i.OutputPath, candidatePath, StringComparison.OrdinalIgnoreCase));
+        && !_items.Any(i => i.Id != excludeItemId
+            && string.Equals(i.OutputPath, candidatePath, StringComparison.OrdinalIgnoreCase));
 }

@@ -33,6 +33,10 @@ public sealed record ConversionSettings
 /// </summary>
 public static class ConversionSettingsPresets
 {
+    /// <summary>应用支持的输出容器（与参数面板的下拉选项同源）。</summary>
+    public static IReadOnlyList<string> Containers { get; } =
+        new[] { ".mp4", ".mov", ".mkv", ".avi", ".webm", ".mp3" };
+
     public static ConversionSettings Mp4() => New(".mp4");
     public static ConversionSettings Mov() => New(".mov");
     public static ConversionSettings Mkv() => New(".mkv");

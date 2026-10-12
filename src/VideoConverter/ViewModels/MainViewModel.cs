@@ -119,7 +119,8 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         Queue = new ObservableCollection<QueueItem>();
-        Containers = new[] { ".mp4", ".mov", ".mkv", ".avi", ".webm", ".mp3" };
+        // 与逐项覆盖下拉同源：支持的容器只在 ConversionSettingsPresets 里定义一次
+        Containers = ConversionSettingsPresets.Containers;
 
         // 队列快照防抖：批量增删/连续状态变更合并成一次写盘
         // （必须在 Queue 建好之后创建：lambda 里要读它）
@@ -430,7 +431,7 @@ public sealed partial class MainViewModel : ObservableObject
         var settings = BuildSettings();
         foreach (var item in Queue.Where(i => i.State == QueueItemState.Pending))
         {
-            item.UpdateSettings(settings, _queue.ResolveOutputPathFor(item.InputPath, settings));
+            item.UpdateSettings(settings, _queue.ResolveOutputPathFor(item.InputPath, settings, item.Id));
             if (SelectedItem == item)
             {
                 OutputPathText = item.OutputPath;
@@ -723,7 +724,7 @@ public sealed partial class MainViewModel : ObservableObject
         var settings = BuildSettings();
         foreach (var item in Queue.Where(i => i.State == QueueItemState.Pending))
         {
-            var output = _queue.ResolveOutputPathFor(item.InputPath, settings);
+            var output = _queue.ResolveOutputPathFor(item.InputPath, settings, item.Id);
             item.UpdateSettings(settings, output);
             if (SelectedItem == item)
             {
@@ -1103,6 +1104,8 @@ public sealed partial class MainViewModel : ObservableObject
             var item = _queue.Enqueue(entry.InputPath, entry.Settings, entry.Info);
             // 快照里的输出路径优先：用户在设置页选过输出目录时，恢复出来的目标不能变回源目录
             item.OutputPath = entry.OutputPath;
+            item.OverrideContainer = entry.OverrideContainer;
+            item.OverrideCrf = entry.OverrideCrf;
             TrackItem(item);
             Queue.Add(item);
             restored++;
@@ -1346,6 +1349,19 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void OnQueueItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // 逐项覆盖也要落盘，否则关掉应用后"已覆盖"会悄悄丢失
+        if (e.PropertyName is nameof(QueueItem.OverrideContainer) or nameof(QueueItem.OverrideCrf))
+        {
+            if (!_dispatcher.HasThreadAccess)
+            {
+                _dispatcher.TryEnqueue(ScheduleQueueSave);
+                return;
+            }
+
+            ScheduleQueueSave();
+            return;
+        }
+
         if (e.PropertyName != nameof(QueueItem.IsSelected))
         {
             return;

@@ -210,17 +210,30 @@
                                     </Grid>
                                 </StackPanel>
 
-                                <Border Grid.Column="2" Style="{StaticResource BadgeBorderStyle}"
-                                        Background="{x:Bind State, Converter={StaticResource StateToBadgeBrush}, Mode=OneWay}">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <FontIcon Glyph="{x:Bind State, Converter={StaticResource StateToGlyph}, Mode=OneWay}"
-                                                  FontSize="13" VerticalAlignment="Center"
-                                                  Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}" />
-                                        <TextBlock Text="{x:Bind StateLabel, Mode=OneWay}" FontSize="12"
-                                                   FontWeight="SemiBold" VerticalAlignment="Center"
-                                                   Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}" />
-                                    </StackPanel>
-                                </Border>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                                    <Border Grid.Column="2" Style="{StaticResource BadgeBorderStyle}"
+                                            Background="{x:Bind State, Converter={StaticResource StateToBadgeBrush}, Mode=OneWay}">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon Glyph="{x:Bind State, Converter={StaticResource StateToGlyph}, Mode=OneWay}"
+                                                      FontSize="13" VerticalAlignment="Center"
+                                                      Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}" />
+                                            <TextBlock Text="{x:Bind StateLabel, Mode=OneWay}" FontSize="12"
+                                                       FontWeight="SemiBold" VerticalAlignment="Center"
+                                                       Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <!-- 参数来源：这一行是逐项覆盖，还是跟随右侧面板 -->
+                                    <Border Style="{StaticResource BadgeBorderStyle}" Background="{ThemeResource AppAccentSoftBackground}"
+                                            Visibility="{x:Bind HasOverride, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                                        <TextBlock Text="已覆盖" FontSize="11" VerticalAlignment="Center"
+                                                   Foreground="{ThemeResource AppAccentForeground}" />
+                                    </Border>
+                                    <Border Style="{StaticResource BadgeBorderStyle}" Background="{ThemeResource AppBadgeNeutralBackground}"
+                                            Visibility="{x:Bind HasOverride, Mode=OneWay, Converter={StaticResource BoolToVisibilityInverse}}">
+                                        <TextBlock Text="继承全局" FontSize="11" VerticalAlignment="Center"
+                                                   Foreground="{ThemeResource AppSubtleText}" />
+                                    </Border>
+                                </StackPanel>
 
                                 <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="2"
                                             VerticalAlignment="Center">

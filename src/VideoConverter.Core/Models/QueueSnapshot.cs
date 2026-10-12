@@ -13,6 +13,12 @@ public sealed class QueueItemSnapshot
     public required ConversionSettings Settings { get; set; }
 
     public MediaInfo? Info { get; set; }
+
+    /// <summary>逐项覆盖：目标容器（null = 继承全局）。</summary>
+    public string? OverrideContainer { get; set; }
+
+    /// <summary>逐项覆盖：质量 CRF（null = 继承全局）。</summary>
+    public int? OverrideCrf { get; set; }
 }
 
 /// <summary>一次队列持久化的完整快照，落盘在 <c>%LOCALAPPDATA%\VideoConverter\queue.json</c>。</summary>
@@ -38,6 +44,8 @@ public sealed class QueueSnapshot
                     OutputPath = i.OutputPath,
                     Settings = i.Settings,
                     Info = i.Info,
+                    OverrideContainer = i.OverrideContainer,
+                    OverrideCrf = i.OverrideCrf,
                 })
                 .ToList(),
         };
