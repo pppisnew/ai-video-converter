@@ -29,8 +29,14 @@
   <!-- ffmpeg 随应用捆绑：发布/构建输出中包含 tools/ffmpeg/(ffmpeg|ffprobe).exe，
        与 Core 层 FfmpegLocator 的"捆绑优先"查找路径对应。二进制由 tools/fetch-ffmpeg.ps1 获取。 -->
   <ItemGroup>
-    <Content Include="..\..\tools\ffmpeg\ffmpeg.exe" Link="tools\ffmpeg\ffmpeg.exe" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="..\..\tools\ffmpeg\ffprobe.exe" Link="tools\ffmpeg\ffprobe.exe" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 二进制不入库（约 145 MB/个），所以**刚克隆下来时它们并不存在**。
+         Condition 让"没取二进制"只意味着构建产物里不带 ffmpeg，而不是整个构建失败
+         （MSB3030）——应用仍能启动，右下角会提示获取；跑一次 tools/fetch-ffmpeg.ps1
+         之后重新构建即自动带上。 -->
+    <Content Include="..\..\tools\ffmpeg\ffmpeg.exe" Link="tools\ffmpeg\ffmpeg.exe" CopyToOutputDirectory="PreserveNewest"
+             Condition="Exists('..\..\tools\ffmpeg\ffmpeg.exe')" />
+    <Content Include="..\..\tools\ffmpeg\ffprobe.exe" Link="tools\ffmpeg\ffprobe.exe" CopyToOutputDirectory="PreserveNewest"
+             Condition="Exists('..\..\tools\ffmpeg\ffprobe.exe')" />
   </ItemGroup>
 
   <!-- unpackaged WinUI 3 的已知缺口：dotnet publish 不会把 XAML 编译产物

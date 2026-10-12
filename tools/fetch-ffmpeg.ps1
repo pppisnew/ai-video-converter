@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     获取 ffmpeg / ffprobe 静态二进制并放置到 tools/ffmpeg/（供应用捆绑分发）。
