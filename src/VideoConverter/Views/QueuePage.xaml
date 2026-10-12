@@ -164,11 +164,20 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
 
-                                <!-- 缩略图占位：模型没有逐项缩略图，用同尺寸中性占位 -->
+                                <!-- 缩略图占位：模型没有逐项缩略图，用按文件名取色的柔和色块 + 时长角标 -->
                                 <Border Grid.Column="0" Width="96" Height="56" CornerRadius="4"
                                         VerticalAlignment="Center"
-                                        Background="{ThemeResource LayerFillColorDefaultBrush}">
-                                    <FontIcon Glyph="&#xE8B2;" FontSize="22" Opacity="0.5" />
+                                        Background="{Binding Converter={StaticResource ThumbnailBrush}}">
+                                    <Grid>
+                                        <FontIcon Glyph="&#xE8B2;" FontSize="22" Foreground="White" Opacity="0.9" />
+                                        <Border HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                Margin="0,0,4,3" Padding="4,0" CornerRadius="3"
+                                                Background="#8C000000"
+                                                Visibility="{x:Bind DurationBadgeText, Converter={StaticResource StringToVisibility}, Mode=OneWay}">
+                                            <TextBlock Text="{x:Bind DurationBadgeText, Mode=OneWay}"
+                                                       FontSize="10" Foreground="White" />
+                                        </Border>
+                                    </Grid>
                                 </Border>
 
                                 <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
@@ -176,7 +185,7 @@
                                                TextTrimming="CharacterEllipsis"
                                                ToolTipService.ToolTip="{x:Bind InputPath, Mode=OneWay}" />
                                     <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <TextBlock Text="{x:Bind MetaPrefix, Mode=OneWay}" FontSize="12"
+                                        <TextBlock Text="{x:Bind TaskMetaPrefix, Mode=OneWay}" FontSize="12"
                                                    Foreground="{ThemeResource AppSubtleText}"
                                                    TextTrimming="CharacterEllipsis" />
                                         <TextBlock Text="·" FontSize="12" Foreground="{ThemeResource AppSubtleText}" />
@@ -186,6 +195,9 @@
                                         <TextBlock Text="{x:Bind TargetSummary, Mode=OneWay}" FontSize="12"
                                                    Foreground="{ThemeResource AppSubtleText}"
                                                    TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="·" FontSize="12" Foreground="{ThemeResource AppSubtleText}" />
+                                        <TextBlock Text="{x:Bind QualityLabel, Mode=OneWay}" FontSize="12"
+                                                   Foreground="{ThemeResource AppSubtleText}" />
                                     </StackPanel>
                                     <Grid ColumnSpacing="10" Margin="0,5,0,0">
                                         <Grid.ColumnDefinitions>

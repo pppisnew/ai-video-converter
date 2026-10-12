@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
 using VideoConverter.Core.Models;
 using VideoConverter.ViewModels;
+using Windows.Foundation;
 
 namespace VideoConverter.Helpers;
 
@@ -120,6 +121,88 @@ public sealed class TaskFilterToChipStyleConverter : IValueConverter
 
         return null!;
     }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>
+/// 缩略图占位底色：按文件名确定性地取一组柔和渐变（对应原型的 hsl 渐变），
+/// 保证每行颜色不同且同一文件颜色稳定。
+/// </summary>
+public sealed class ThumbnailBrushConverter : IValueConverter
+{
+    private static readonly double[] Hues = { 205, 160, 275, 25, 330, 100 };
+    private static readonly LinearGradientBrush[] Brushes = CreateBrushes();
+
+    private static LinearGradientBrush[] CreateBrushes()
+    {
+        var brushes = new LinearGradientBrush[Hues.Length];
+        for (var i = 0; i < Hues.Length; i++)
+        {
+            var hue = Hues[i];
+            var brush = new LinearGradientBrush
+            {
+                StartPoint = new Point(0, 0),
+                EndPoint = new Point(1, 1),
+            };
+            brush.GradientStops.Add(new GradientStop { Offset = 0, Color = FromHsl(hue, 0.62, 0.46) });
+            brush.GradientStops.Add(new GradientStop { Offset = 1, Color = FromHsl((hue + 45) % 360, 0.70, 0.28) });
+            brushes[i] = brush;
+        }
+
+        return brushes;
+    }
+
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var name = value switch
+        {
+            QueueItem item => item.FileName,
+            string text => text,
+            _ => string.Empty,
+        };
+
+        var hash = 0;
+        foreach (var ch in name)
+        {
+            hash = unchecked(hash * 31 + ch);
+        }
+
+        return Brushes[(hash & 0x7FFFFFFF) % Brushes.Length];
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+        throw new NotSupportedException();
+
+    private static Color FromHsl(double hue, double saturation, double lightness)
+    {
+        var c = (1 - Math.Abs(2 * lightness - 1)) * saturation;
+        var h = hue / 60.0;
+        var x = c * (1 - Math.Abs(h % 2 - 1));
+        var (r, g, b) = (int)h switch
+        {
+            0 => (c, x, 0d),
+            1 => (x, c, 0d),
+            2 => (0d, c, x),
+            3 => (0d, x, c),
+            4 => (x, 0d, c),
+            _ => (c, 0d, x),
+        };
+        var m = lightness - c / 2;
+        return Color.FromArgb(
+            255,
+            (byte)Math.Round((r + m) * 255),
+            (byte)Math.Round((g + m) * 255),
+            (byte)Math.Round((b + m) * 255));
+    }
+}
+
+/// <summary>空字符串折叠：非空内容显示，空/空白内容隐藏（时长角标等可选小标记用）。</summary>
+public sealed class StringToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language) =>
+        value is string text && !string.IsNullOrWhiteSpace(text) ? Visibility.Visible : Visibility.Collapsed;
 
     public object ConvertBack(object value, Type targetType, object parameter, string language) =>
         throw new NotSupportedException();

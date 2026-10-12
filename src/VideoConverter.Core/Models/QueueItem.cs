@@ -34,6 +34,7 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
         OutputPath = outputPath;
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Settings)));
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(TargetSummary)));
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(QualityLabel)));
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(OutputPath)));
     }
     public MediaInfo? Info { get; init; }
@@ -114,6 +115,42 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
             return parts.Count > 0 ? string.Join(" · ", parts) : "信息不可用";
         }
     }
+
+    /// <summary>任务行元信息前缀：大小 · 分辨率（原型任务行不带时长，时长走缩略图角标）。</summary>
+    public string TaskMetaPrefix
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (Info?.SizeBytes is { } size)
+            {
+                parts.Add(FormatSize(size));
+            }
+
+            if (Info?.Width is { } width && Info?.Height is { } height)
+            {
+                parts.Add($"{width} x {height}");
+            }
+
+            return parts.Count > 0 ? string.Join(" · ", parts) : "信息不可用";
+        }
+    }
+
+    /// <summary>缩略图右下角时长角标（mm:ss；≥1 小时为 h:mm:ss），时长未知时为空串。</summary>
+    public string DurationBadgeText => Info?.Duration is { } duration && duration > TimeSpan.Zero
+        ? duration.TotalHours >= 1
+            ? $"{duration.Hours}:{duration.Minutes:00}:{duration.Seconds:00}"
+            : $"{duration.Minutes:00}:{duration.Seconds:00}"
+        : string.Empty;
+
+    /// <summary>质量档位文案，按真实 CRF 推导（0 → 原始画质，≤18 → 高画质，≤26 → 中等，其余 → 低画质）。</summary>
+    public string QualityLabel => Settings.Crf switch
+    {
+        0 => "原始画质",
+        <= 18 => "高画质",
+        <= 26 => "中等",
+        _ => "低画质",
+    };
 
     public bool IsCompleted => State == QueueItemState.Completed;
 

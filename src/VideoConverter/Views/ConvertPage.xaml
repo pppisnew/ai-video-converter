@@ -51,8 +51,12 @@
                                     <TextBlock Text="将视频文件拖到这里" FontSize="15" FontWeight="SemiBold"
                                                HorizontalAlignment="Center" />
                                     <TextBlock FontSize="13" Foreground="{ThemeResource AppSubtleText}"
-                                               HorizontalAlignment="Center" TextAlignment="Center"
-                                               Text="或 点击选择文件，支持批量添加 MP4 / MKV / AVI / MOV / WebM" />
+                                               HorizontalAlignment="Center" TextAlignment="Center">
+                                        <Run Text="或 " />
+                                        <Run Text="点击选择文件" FontWeight="SemiBold"
+                                             Foreground="{ThemeResource AccentFillColorDefaultBrush}" />
+                                        <Run Text="，支持批量添加 MP4 / MKV / AVI / MOV / WebM" />
+                                    </TextBlock>
                                 </StackPanel>
                             </Button>
                         </Grid>
@@ -115,11 +119,20 @@
                                                           Margin="0,0,2,0"
                                                           AutomationProperties.Name="参与转换" />
 
-                                                <!-- 缩略图占位：当前没有逐项缩略图，用同尺寸中性占位 -->
+                                                <!-- 缩略图占位：模型没有逐项缩略图，用按文件名取色的柔和色块 + 时长角标 -->
                                                 <Border Grid.Column="1" Width="96" Height="56" CornerRadius="4"
                                                         VerticalAlignment="Top"
-                                                        Background="{ThemeResource LayerFillColorDefaultBrush}">
-                                                    <FontIcon Glyph="&#xE8B2;" FontSize="22" Opacity="0.5" />
+                                                        Background="{Binding Converter={StaticResource ThumbnailBrush}}">
+                                                    <Grid>
+                                                        <FontIcon Glyph="&#xE8B2;" FontSize="22" Foreground="White" Opacity="0.9" />
+                                                        <Border HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                                Margin="0,0,4,3" Padding="4,0" CornerRadius="3"
+                                                                Background="#8C000000"
+                                                                Visibility="{x:Bind DurationBadgeText, Converter={StaticResource StringToVisibility}, Mode=OneWay}">
+                                                            <TextBlock Text="{x:Bind DurationBadgeText, Mode=OneWay}"
+                                                                       FontSize="10" Foreground="White" />
+                                                        </Border>
+                                                    </Grid>
                                                 </Border>
 
                                                 <StackPanel Grid.Column="2" Spacing="4" VerticalAlignment="Center">
@@ -136,18 +149,30 @@
                                                                    Foreground="{ThemeResource AppSubtleText}"
                                                                    TextTrimming="CharacterEllipsis" />
                                                     </StackPanel>
-                                                    <Border Style="{StaticResource BadgeBorderStyle}"
-                                                            HorizontalAlignment="Left" Margin="0,2,0,0"
-                                                            Background="{x:Bind State, Converter={StaticResource StateToBadgeBrush}, Mode=OneWay}">
-                                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                                            <FontIcon Glyph="{x:Bind State, Converter={StaticResource StateToGlyph}, Mode=OneWay}"
-                                                                      FontSize="13" VerticalAlignment="Center"
-                                                                      Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}" />
-                                                            <TextBlock Text="{x:Bind StateLabel, Mode=OneWay}" FontSize="12"
-                                                                       FontWeight="SemiBold" VerticalAlignment="Center"
-                                                                       Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}" />
-                                                        </StackPanel>
-                                                    </Border>
+                                                    <Grid ColumnSpacing="8" Margin="0,2,0,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border Grid.Column="0" Style="{StaticResource BadgeBorderStyle}"
+                                                                HorizontalAlignment="Left"
+                                                                Background="{x:Bind State, Converter={StaticResource StateToBadgeBrush}, Mode=OneWay}">
+                                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                <FontIcon Glyph="{x:Bind State, Converter={StaticResource StateToGlyph}, Mode=OneWay}"
+                                                                          FontSize="13" VerticalAlignment="Center"
+                                                                          Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}" />
+                                                                <TextBlock Text="{x:Bind StateLabel, Mode=OneWay}" FontSize="12"
+                                                                           FontWeight="SemiBold" VerticalAlignment="Center"
+                                                                           Foreground="{x:Bind State, Converter={StaticResource StateToBrush}, Mode=OneWay}" />
+                                                            </StackPanel>
+                                                        </Border>
+                                                        <!-- 失败原因紧跟徽章：危险色、省略号、悬停看全文 -->
+                                                        <TextBlock Grid.Column="1" Text="{x:Bind Error, Mode=OneWay}" FontSize="12"
+                                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{ThemeResource AppDangerForeground}"
+                                                                   Visibility="{x:Bind Error, Converter={StaticResource StringToVisibility}, Mode=OneWay}"
+                                                                   ToolTipService.ToolTip="{x:Bind Error, Mode=OneWay}" />
+                                                    </Grid>
                                                     <!-- 进度条只在转换中显示（IsNotConverting 取反） -->
                                                     <ProgressBar Style="{StaticResource ThinProgressBarStyle}" Maximum="100"
                                                                  Value="{x:Bind ProgressValue, Mode=OneWay}" Margin="0,4,0,0"

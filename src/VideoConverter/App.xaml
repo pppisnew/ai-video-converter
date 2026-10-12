@@ -17,6 +17,8 @@
             <helpers:QueueStateToBadgeBrushConverter x:Key="StateToBadgeBrush" />
             <helpers:ExtensionLabelConverter x:Key="ExtensionLabel" />
             <helpers:TaskFilterToChipStyleConverter x:Key="FilterChipStyle" />
+            <helpers:ThumbnailBrushConverter x:Key="ThumbnailBrush" />
+            <helpers:StringToVisibilityConverter x:Key="StringToVisibility" />
             <helpers:BoolToVisibilityConverter x:Key="BoolToVisibility" />
             <helpers:InverseBoolToVisibilityConverter x:Key="BoolToVisibilityInverse" />
         </ResourceDictionary>

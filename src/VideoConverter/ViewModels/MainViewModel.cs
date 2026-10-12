@@ -125,7 +125,9 @@ public sealed partial class MainViewModel : ObservableObject
     private static string ResolveAppVersion()
     {
         var version = typeof(MainViewModel).Assembly.GetName().Version;
-        return version is null ? "版本未知" : $"版本 {version.ToString(3)}";
+        return version is null
+            ? "版本未知 · WinUI 3 / Windows App SDK"
+            : $"版本 {version.ToString(3)} · WinUI 3 / Windows App SDK";
     }
 
     [ObservableProperty]
