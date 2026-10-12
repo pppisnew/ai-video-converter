@@ -92,7 +92,6 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
         _ => string.Empty,
     };
 
-    /// <summary>列表行元信息前缀：大小 · 时长 · 分辨率（信息缺失时给出提示而非空白）。</summary>
     /// <summary>
     /// 队列行元信息单行文案，如 "1.7 MB · 720 x 1280 · MP4 → MP4 · 自动（继承全局） · 中等"。
     /// 故意合成一个字符串而不是多个 TextBlock 横向排列：后者超宽时会把靠后的元素
@@ -124,7 +123,6 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
         }
     }
 
-    /// <summary>任务行元信息前缀：大小 · 分辨率（原型任务行不带时长，时长走缩略图角标）。</summary>
     /// <summary>缩略图右下角时长角标（mm:ss；≥1 小时为 h:mm:ss），时长未知时为空串。</summary>
     public string DurationBadgeText => Info?.Duration is { } duration && duration > TimeSpan.Zero
         ? duration.TotalHours >= 1

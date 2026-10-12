@@ -190,6 +190,13 @@ public sealed class FfmpegConversionService : IConversionService
             }
         }
 
+        // 帧率：null 表示保持原始，此时不传 -r，避免 ffmpeg 无谓地重采样
+        if (settings.Fps is { } fps)
+        {
+            arguments.Add("-r");
+            arguments.Add(fps.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
         // WebM 只支持 Vorbis/Opus 音频，AAC 会被 mkv/webm muxer 拒绝
         var audioCodec = settings.Container.Equals(".webm", StringComparison.OrdinalIgnoreCase)
             ? "libopus"

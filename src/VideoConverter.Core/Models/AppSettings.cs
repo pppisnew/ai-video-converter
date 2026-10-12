@@ -26,8 +26,17 @@ public sealed class AppSettings
     /// <summary>默认分辨率缩放。</summary>
     public ResolutionScale Scale { get; set; } = ResolutionScale.Original;
 
+    /// <summary>默认帧率；null = 保持原始帧率。</summary>
+    public int? Fps { get; set; }
+
     /// <summary>默认音频码率（kbps）。</summary>
     public int AudioBitrateKbps { get; set; } = 128;
+
+    /// <summary>整队成功结束后在资源管理器中定位产物。</summary>
+    public bool OpenFolderAfterConversion { get; set; } = true;
+
+    /// <summary>启动时把上次未完成的任务放回队列（一律置等待中，不自动开跑）。</summary>
+    public bool RestoreQueueOnStartup { get; set; } = true;
 
     /// <summary>
     /// 把可能越界的值夹回合法范围。设置文件可能被手改坏，
@@ -39,6 +48,9 @@ public sealed class AppSettings
         Container = string.IsNullOrWhiteSpace(Container) ? ".mp4" : Container,
         Crf = Math.Clamp(Crf, 0, 51),
         Scale = Enum.IsDefined(Scale) ? Scale : ResolutionScale.Original,
+        Fps = Fps is { } fps ? Math.Clamp(fps, 1, 240) : null,
         AudioBitrateKbps = Math.Clamp(AudioBitrateKbps, 32, 512),
+        OpenFolderAfterConversion = OpenFolderAfterConversion,
+        RestoreQueueOnStartup = RestoreQueueOnStartup,
     };
 }

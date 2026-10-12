@@ -16,6 +16,9 @@ public sealed record EncoderOption(string Label, VideoEncoderChoice Value);
 
 public sealed record ScaleOption(string Label, ResolutionScale Value);
 
+/// <summary>帧率选项（Value 为 null 表示保持原始帧率）。</summary>
+public sealed record FpsOption(string Label, int? Value);
+
 /// <summary>设置页主题选项（标签 + 取值）。</summary>
 public sealed record ThemeOption(string Label, AppTheme Value);
 
@@ -62,6 +65,8 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly DispatcherQueueTimer _statusTimer;
     private readonly AppSettingsStore _settingsStore;
     private readonly DispatcherQueueTimer _saveTimer;
+    private readonly QueueStore _queueStore;
+    private readonly DispatcherQueueTimer _queueSaveTimer;
 
     public MainViewModel(IFfmpegLocator locator, DispatcherQueue dispatcher)
     {
@@ -75,6 +80,7 @@ public sealed partial class MainViewModel : ObservableObject
         _statusTimer.Tick += (_, _) => StatusVisible = Visibility.Collapsed;
 
         _settingsStore = new AppSettingsStore();
+        _queueStore = new QueueStore();
 
         // 设置落盘防抖：拖质量滑杆会连续触发，合并成一次写盘
         _saveTimer = _dispatcher.CreateTimer();
@@ -115,11 +121,27 @@ public sealed partial class MainViewModel : ObservableObject
         Queue = new ObservableCollection<QueueItem>();
         Containers = new[] { ".mp4", ".mov", ".mkv", ".avi", ".webm", ".mp3" };
 
+        // 队列快照防抖：批量增删/连续状态变更合并成一次写盘
+        // （必须在 Queue 建好之后创建：lambda 里要读它）
+        _queueSaveTimer = _dispatcher.CreateTimer();
+        _queueSaveTimer.Interval = TimeSpan.FromMilliseconds(250);
+        _queueSaveTimer.IsRepeating = false;
+        _queueSaveTimer.Tick += (_, _) =>
+        {
+            _queueSaveTimer.Stop();
+            _queueStore.Save(QueueSnapshot.FromItems(Queue));
+        };
+
         // 选项集合必须先填充：OnScaleChanged / RebuildEncoderOptions 都依赖它们
         ScaleOptions.Add(new ScaleOption("原始分辨率", ResolutionScale.Original));
         ScaleOptions.Add(new ScaleOption("1080p", ResolutionScale.P1080));
         ScaleOptions.Add(new ScaleOption("720p", ResolutionScale.P720));
         ScaleOptions.Add(new ScaleOption("480p", ResolutionScale.P480));
+
+        FpsOptions.Add(new FpsOption("保持原始", null));
+        FpsOptions.Add(new FpsOption("60 fps", 60));
+        FpsOptions.Add(new FpsOption("30 fps", 30));
+        FpsOptions.Add(new FpsOption("24 fps", 24));
 
         // 再读回上次的偏好；顺序反了会在启动瞬间把存下来的设置覆盖掉
         var saved = _settingsStore.Load();
@@ -127,14 +149,19 @@ public sealed partial class MainViewModel : ObservableObject
         EncoderChoice = VideoEncoderChoice.Auto;
         Crf = saved.Crf;
         Scale = saved.Scale;
+        Fps = saved.Fps;
         AudioBitrate = saved.AudioBitrateKbps;
         Theme = saved.Theme;
+        OpenFolderAfterConversion = saved.OpenFolderAfterConversion;
+        RestoreQueueOnStartup = saved.RestoreQueueOnStartup;
 
         // Scale 变更已把 SelectedScaleOption 同步过去；兜底防空（枚举被收敛过不该发生）
         SelectedScaleOption ??= ScaleOptions[0];
+        SelectedFpsOption ??= FpsOptions[0];
         RebuildEncoderOptions();
         SelectedEncoderOption = EncoderOptions.FirstOrDefault();
         StatusBrush = NormalTextBrush;
+        RestoreQueueFromSnapshot();
         _ = ProbeEncodersAsync();
         RefreshQueueSummary();
     }
@@ -379,6 +406,10 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private ResolutionScale _scale = ResolutionScale.Original;
 
+    /// <summary>目标帧率；null = 保持原始帧率。</summary>
+    [ObservableProperty]
+    private int? _fps;
+
     [ObservableProperty]
     private int _audioBitrate = 128;
 
@@ -424,6 +455,18 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>整队成功结束后在资源管理器中定位产物（默认开，可在设置页关掉）。</summary>
+    [ObservableProperty]
+    private bool _openFolderAfterConversion = true;
+
+    partial void OnOpenFolderAfterConversionChanged(bool value) => ScheduleSettingsSave();
+
+    /// <summary>启动时恢复上次未完成的任务（默认开）。</summary>
+    [ObservableProperty]
+    private bool _restoreQueueOnStartup = true;
+
+    partial void OnRestoreQueueOnStartupChanged(bool value) => ScheduleSettingsSave();
+
 
     [ObservableProperty]
     private string _encoderStatusText = "正在探测编码器…";
@@ -466,6 +509,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     public ObservableCollection<ScaleOption> ScaleOptions { get; } = new();
 
+    /// <summary>帧率选项：保持原始 / 60 / 30 / 24。</summary>
+    public ObservableCollection<FpsOption> FpsOptions { get; } = new();
+
     /// <summary>主题选项：浅色 / 深色 / 跟随系统。</summary>
     public IReadOnlyList<ThemeOption> ThemeOptions { get; } = new[]
     {
@@ -480,6 +526,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private ScaleOption _selectedScaleOption = null!;
+
+    [ObservableProperty]
+    private FpsOption _selectedFpsOption = null!;
 
     [ObservableProperty]
     private string _statusMessage = string.Empty;
@@ -609,6 +658,26 @@ public sealed partial class MainViewModel : ObservableObject
         ScheduleSettingsSave();
     }
 
+    partial void OnSelectedFpsOptionChanged(FpsOption value)
+    {
+        if (value is not null && Fps != value.Value)
+        {
+            Fps = value.Value;
+        }
+    }
+
+    partial void OnFpsChanged(int? value)
+    {
+        ScheduleSettingsSave();
+        var match = FpsOptions.FirstOrDefault(o => o.Value == value);
+        if (match is not null && SelectedFpsOption != match)
+        {
+            SelectedFpsOption = match;
+        }
+
+        UpdateSummary();
+    }
+
     partial void OnForceSoftwareChanged(bool value) => UpdateSummary();
 
     partial void OnSelectedItemChanged(QueueItem? value)
@@ -639,6 +708,7 @@ public sealed partial class MainViewModel : ObservableObject
         Encoder = EncoderCatalog.Sanitize(SelectedContainer, EncoderChoice),
         Crf = Crf,
         Scale = Scale,
+        Fps = Fps,
         AudioBitrateKbps = AudioBitrate,
         AudioOnly = SelectedContainer == ".mp3",
         ForceSoftware = ForceSoftware,
@@ -701,7 +771,8 @@ public sealed partial class MainViewModel : ObservableObject
             _ => "原始分辨率",
         };
 
-        ParameterSummary = $"{SelectedContainer.TrimStart('.').ToUpperInvariant()} · {codecName}{hwSuffix} · {quality} · {scale} · 音频 {settings.AudioBitrateKbps}kbps";
+        var frameRate = settings.Fps is { } fps ? $" · {fps}fps" : string.Empty;
+        ParameterSummary = $"{SelectedContainer.TrimStart('.').ToUpperInvariant()} · {codecName}{hwSuffix} · {quality} · {scale}{frameRate} · 音频 {settings.AudioBitrateKbps}kbps";
         ParameterSummaryBrush = NormalTextBrush;
     }
 
@@ -780,6 +851,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (added > 0)
         {
             OnPropertyChanged(nameof(SelectedCount));
+            ScheduleQueueSave();
         }
 
         // Report even when everything was a duplicate (added == 0), otherwise the user
@@ -904,6 +976,7 @@ public sealed partial class MainViewModel : ObservableObject
         Queue.Clear();
         SelectedItem = null;
         RefreshQueueSummary();
+        ScheduleQueueSave();
         SetStatus($"已清空队列（{count} 项）", false);
     }
 
@@ -926,6 +999,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         SelectedItem = _queue.Items.FirstOrDefault(i => i.Id == selectedId) ?? Queue.FirstOrDefault();
+        ScheduleQueueSave();
         RefreshQueueSummary();
     }
 
@@ -959,6 +1033,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         item.ResetForRetry();
         RefreshQueueSummary();
+        ScheduleQueueSave();
         SetStatus($"已重新加入 {item.FileName}", false);
     }
 
@@ -989,7 +1064,10 @@ public sealed partial class MainViewModel : ObservableObject
         Container = SelectedContainer,
         Crf = Crf,
         Scale = Scale,
+        Fps = Fps,
         AudioBitrateKbps = AudioBitrate,
+        OpenFolderAfterConversion = OpenFolderAfterConversion,
+        RestoreQueueOnStartup = RestoreQueueOnStartup,
     };
 
     /// <summary>排一次防抖落盘；构造期的高频赋值只会写一次。</summary>
@@ -997,6 +1075,47 @@ public sealed partial class MainViewModel : ObservableObject
     {
         _saveTimer.Stop();
         _saveTimer.Start();
+    }
+
+    /// <summary>排一次队列快照落盘；批量增删与连续状态变更合并成一次写盘。</summary>
+    private void ScheduleQueueSave()
+    {
+        _queueSaveTimer.Stop();
+        _queueSaveTimer.Start();
+    }
+
+    /// <summary>
+    /// 启动恢复：把上次会话未完成的任务放回队列，一律"等待中"，绝不自动开跑。
+    /// 媒体信息摘要来自快照，启动时不需要再跑 ffprobe。
+    /// </summary>
+    private void RestoreQueueFromSnapshot()
+    {
+        if (!RestoreQueueOnStartup || _queueStore.Load() is not { } snapshot)
+        {
+            return;
+        }
+
+        var (items, skipped) = snapshot.PlanRestore();
+        var restored = 0;
+
+        foreach (var entry in items)
+        {
+            var item = _queue.Enqueue(entry.InputPath, entry.Settings, entry.Info);
+            // 快照里的输出路径优先：用户在设置页选过输出目录时，恢复出来的目标不能变回源目录
+            item.OutputPath = entry.OutputPath;
+            TrackItem(item);
+            Queue.Add(item);
+            restored++;
+        }
+
+        if (restored == 0 && skipped == 0)
+        {
+            return;
+        }
+
+        SetStatus(skipped > 0
+            ? $"已恢复 {restored} 个未完成任务，跳过 {skipped} 个已缺失文件"
+            : $"已恢复 {restored} 个未完成任务", false);
     }
 
     /// <summary>移除单个队列项（列表项上的删除按钮直接调用）。转换中的项不可移除。</summary>
@@ -1021,6 +1140,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         RefreshQueueSummary();
+        ScheduleQueueSave();
         SetStatus($"已移除 {item.FileName}", false);
     }
 
@@ -1037,6 +1157,11 @@ public sealed partial class MainViewModel : ObservableObject
         _queue.ClearCompleted();
         SelectedItem = Queue.FirstOrDefault();
         RefreshQueueSummary();
+        if (completed.Count > 0)
+        {
+            ScheduleQueueSave();
+        }
+
         SetStatus($"已清除 {completed.Count} 个已完成任务", false);
     }
 
@@ -1051,6 +1176,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         RefreshQueueSummary();
+        ScheduleQueueSave();
         SetStatus($"已重新加入 {retried} 个失败任务", false);
         await ConvertAsync();
     }
@@ -1096,6 +1222,7 @@ public sealed partial class MainViewModel : ObservableObject
         EncoderChoice = VideoEncoderChoice.Auto;
         Crf = 23;
         Scale = ResolutionScale.Original;
+        Fps = null;
         AudioBitrate = 128;
         ForceSoftware = false;
         SetStatus("参数已重置为默认值", false);
@@ -1113,21 +1240,23 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        var startInfo = new System.Diagnostics.ProcessStartInfo("explorer.exe")
+        if (!TryRevealInExplorer(item.OutputPath))
         {
-            UseShellExecute = true,
-            Arguments = $"/select,\"{item.OutputPath}\"",
-        };
-        System.Diagnostics.Process.Start(startInfo);
+            SetStatus("无法打开资源管理器", true);
+        }
     }
 
     [RelayCommand]
-    private void OpenFfmpegDownloadPage()
-    {
-        var url = string.Concat("https:", "//github.com/", "BtbN/FFmpeg-Builds/releases");
-        var startInfo = new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true };
-        System.Diagnostics.Process.Start(startInfo);
-    }
+    private void OpenFfmpegDownloadPage() =>
+        OpenExternalUrl(string.Concat("https:", "//github.com/", "BtbN/FFmpeg-Builds/releases"));
+
+    /// <summary>
+    /// 打开发布页。应用没有可查询的更新接口，所以这里不做成"检查更新"——
+    /// 文案与真实行为一致，用户点下去看到的就是版本说明页。
+    /// </summary>
+    [RelayCommand]
+    private void OpenReleasesPage() =>
+        OpenExternalUrl(string.Concat("https:", "//github.com/", "pppisnew/ai-video-converter/releases"));
 
     /// <summary>把 ffmpeg 版本/来源信息复制到剪贴板，便于排查环境问题。</summary>
     [RelayCommand]
@@ -1196,6 +1325,17 @@ public sealed partial class MainViewModel : ObservableObject
         ProgressPercent = 0;
         ProgressSummary = string.Empty;
         RefreshQueueSummary();
+        ScheduleQueueSave();
+
+        // 整队成功（有产物且没有失败）时才自动定位到第一个产物。
+        // shell 调用失败只当没发生：转换本身已经成功，不该因为打不开资源管理器报错。
+        if (OpenFolderAfterConversion
+            && summary.Completed > 0
+            && summary.Failed == 0
+            && Queue.FirstOrDefault(i => i.State == QueueItemState.Completed) is { } firstCompleted)
+        {
+            TryRevealInExplorer(firstCompleted.OutputPath);
+        }
     }
 
     // ---- 队列项属性订阅（复选框勾选态变化需要回写全选态与计数） ----
@@ -1309,4 +1449,47 @@ public sealed partial class MainViewModel : ObservableObject
         {
         }
     }
+
+    /// <summary>
+    /// 用系统默认程序打开网页。非打包环境下没有浏览器关联、被策略拦下都很常见，
+    /// 打不开只是拿不到外部资源，不该以异常形式冒到应用层。
+    /// </summary>
+    private static void OpenExternalUrl(string url)
+    {
+        try
+        {
+            var startInfo = new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true };
+            System.Diagnostics.Process.Start(startInfo);
+        }
+        catch (Exception ex) when (IsShellFailure(ex))
+        {
+        }
+    }
+
+    /// <summary>在资源管理器中选中文件；返回是否成功，shell 失败一律不抛。</summary>
+    private static bool TryRevealInExplorer(string path)
+    {
+        try
+        {
+            var startInfo = new System.Diagnostics.ProcessStartInfo("explorer.exe")
+            {
+                UseShellExecute = true,
+                Arguments = $"/select,\"{path}\"",
+            };
+            System.Diagnostics.Process.Start(startInfo);
+            return true;
+        }
+        catch (Exception ex) when (IsShellFailure(ex))
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Process.Start 在 shell 层能抛出的异常集合（含无关联程序与权限不足）。</summary>
+    private static bool IsShellFailure(Exception ex) =>
+        ex is System.ComponentModel.Win32Exception
+            or InvalidOperationException
+            or IOException
+            or UnauthorizedAccessException
+            or NotSupportedException;
 }

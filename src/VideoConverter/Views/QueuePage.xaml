@@ -169,7 +169,7 @@
                                         VerticalAlignment="Center"
                                         Background="{Binding Converter={StaticResource ThumbnailBrush}, ConverterParameter=task}">
                                     <Grid>
-                                        <FontIcon Glyph="&#xE8B2;" FontSize="22" Foreground="White" Opacity="0.9" />
+                                        <FontIcon Glyph="&#xE8B2;" FontSize="28" Foreground="White" Opacity="0.9" />
                                         <Border HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                 Margin="0,0,4,3" Padding="4,0" CornerRadius="3"
                                                 Background="#8C000000"

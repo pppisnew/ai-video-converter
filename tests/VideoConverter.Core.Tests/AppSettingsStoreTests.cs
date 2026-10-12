@@ -34,6 +34,9 @@ public class AppSettingsStoreTests
             Assert.Equal(23, settings.Crf);
             Assert.Equal(ResolutionScale.Original, settings.Scale);
             Assert.Equal(128, settings.AudioBitrateKbps);
+            Assert.Null(settings.Fps);
+            Assert.True(settings.OpenFolderAfterConversion);
+            Assert.True(settings.RestoreQueueOnStartup);
         }
         finally
         {
@@ -54,7 +57,10 @@ public class AppSettingsStoreTests
                 Container = ".mkv",
                 Crf = 18,
                 Scale = ResolutionScale.P720,
+                Fps = 30,
                 AudioBitrateKbps = 192,
+                OpenFolderAfterConversion = false,
+                RestoreQueueOnStartup = false,
             });
 
             var loaded = store.Load();
@@ -63,7 +69,47 @@ public class AppSettingsStoreTests
             Assert.Equal(".mkv", loaded.Container);
             Assert.Equal(18, loaded.Crf);
             Assert.Equal(ResolutionScale.P720, loaded.Scale);
+            Assert.Equal(30, loaded.Fps);
             Assert.Equal(192, loaded.AudioBitrateKbps);
+            Assert.False(loaded.OpenFolderAfterConversion);
+            Assert.False(loaded.RestoreQueueOnStartup);
+        }
+        finally
+        {
+            Cleanup(dir);
+        }
+    }
+
+    [Fact]
+    public void Fps_KeepOriginal_StaysNullAfterRoundTrip()
+    {
+        var dir = NewTempDir();
+        try
+        {
+            var store = new AppSettingsStore(dir);
+            store.Save(new AppSettings { Fps = null });
+
+            Assert.Null(store.Load().Fps);
+        }
+        finally
+        {
+            Cleanup(dir);
+        }
+    }
+
+    [Theory]
+    [InlineData(999, 240)]
+    [InlineData(0, 1)]
+    [InlineData(-5, 1)]
+    public void Fps_OutOfRange_IsClampedOnLoad(int stored, int expected)
+    {
+        var dir = NewTempDir();
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "settings.json"), $$"""{"Fps":{{stored}}}""");
+
+            Assert.Equal(expected, new AppSettingsStore(dir).Load().Fps);
         }
         finally
         {

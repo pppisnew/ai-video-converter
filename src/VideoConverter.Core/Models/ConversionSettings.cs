@@ -15,6 +15,9 @@ public sealed record ConversionSettings
 
     public ResolutionScale Scale { get; init; } = ResolutionScale.Original;
 
+    /// <summary>目标帧率；null = 保持原始帧率（不向 ffmpeg 传 -r）。</summary>
+    public int? Fps { get; init; }
+
     public int AudioBitrateKbps { get; init; } = 128;
 
     /// <summary>仅音频输出（MP3），忽略视频参数。</summary>
