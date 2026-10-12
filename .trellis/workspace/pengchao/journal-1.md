@@ -73,3 +73,35 @@ P2 of the P1-P6 plan. Added Core-level AppSettings/AppSettingsStore with JSON pe
 ### Next Steps
 
 - P2 awaits user acceptance. Known leftover to fold into P3: at 1180 DIP the convert-page queue row still trims the inherited suffix at the end; moving the up/down buttons into a row context menu frees the width. Then P3: frame rate + open-output-folder + licence dialog + the visual polish items.
+
+
+## Session 3: 前端重构 / 交付整理 / 新机器可启动性核查（2026-10-12）
+<!-- trellis-session: v=2 fp=2b4de272ff11cfba -->
+
+**Date**: 2026-10-12
+**Task**: 前端重构 / 交付整理 / 新机器可启动性核查（2026-10-12）
+**Branch**: `main`
+
+### Summary
+
+本轮 session：转换页布局与队列交互重构、根目录一键启动与发布版、README 与总结文档按笔试要求重写、干净克隆实测启动链路，最后按用户要求把 main 回退到 a59d5c2 并只恢复两个修复。
+
+### Main Changes
+
+- 40f496d 布局与交互（整页不滚/队列自滚、▼▲ 展开、展开区 340→194.7 DIP、详情绑所属项、删死状态 IsCurrent）；191e64c README 按七条要求重写+6 张截图；a59d5c2 文档与当前界面对齐；ba2fc49 根目录启动脚本与发布版（后被回退）；7e16a0c 新机器核查与两个修复（后被回退）；d02b2d0 只恢复两个修复：csproj 条件拷贝 + fetch-ffmpeg.ps1 补 BOM；随后归档任务 10-11-frontend-polish 到 archive/2026-10。
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] dotnet build 0 警告 0 错误；dotnet test 199 通过；UIA 实测：20 项队列滚到底右面板与开始转换不动、展开行 194.7 DIP、真实鼠标点 ▼ 不改选中、两行可同时展开、任务列表 1180x600 下 VerticallyScrollable=true；干净克隆实测：无二进制、无本地缓存，条件拷贝后 build 通过、启动脚本能构建并拉起应用，PATH 去掉 ffmpeg 时应用仍可启动并提示获取。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 未做：窄窗单列主操作常驻、转换页 MetaLine 末尾质量档位截断、测试套件在 %TEMP% 留下大量 vc-* 目录（本轮手工清掉约 5100 个）、根目录三个旧发布目录约 1.3GB、以及若要给评审一键启动需重新引入启动脚本。
