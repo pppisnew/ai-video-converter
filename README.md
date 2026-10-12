@@ -97,24 +97,42 @@
 
 ## 快速开始
 
+一条命令（校验 SDK → 按需补 ffmpeg → 构建 → 启动）：
+
 ```powershell
-# 1. 安装 .NET 10 SDK（如未安装）
+./tools/dev.ps1
+```
+
+脚本只是把下面四步里「该跳过就跳过」的判断做了，每一步都会打印出来；
+想看清或想自己控制，照手动步骤跑，语义完全一致。
+
+### 手动等价步骤
+
+```powershell
+# 1. 安装 .NET 10 SDK（如未安装；装完 dotnet --version 应显示 10.x）
 winget install --id Microsoft.DotNet.SDK.10 --source winget
 
 # 2. 取 ffmpeg 静态二进制到 tools/ffmpeg/（约 280MB；仓库不存二进制）
+#    可跳过：PATH 里已有 ffmpeg + ffprobe 时不必下载，应用会走「系统 PATH」查找
+#    （代价：构建产物不带 ffmpeg，换机器要另装；想随包捆绑就别跳）
 ./tools/fetch-ffmpeg.ps1
 
-# 3. 构建并运行
-dotnet build
+# 3. 构建并运行（dotnet run 自带构建，不需要先 dotnet build）
 dotnet run --project src/VideoConverter
 
 # 4. 单元测试
 dotnet test
 ```
 
-以上命令均已在本机实跑（Windows 11 / .NET 10）：`dotnet build` 0 警告 0 错误，`dotnet test` 199/199 通过。
-构建输出里已经带着 `tools/ffmpeg/{ffmpeg,ffprobe}.exe`，也可以直接双击
-`src\VideoConverter\bin\Debug\net10.0-windows10.0.17763.0\VideoConverter.exe` 启动，不必用 `dotnet run`。
+启动过一次之后不必再走 `dotnet run`，直接双击
+`src\VideoConverter\bin\Debug\net10.0-windows10.0.17763.0\VideoConverter.exe`
+（构建输出里已经带着 `tools\ffmpeg\{ffmpeg,ffprobe}.exe`）。
+
+以上命令均已在本机实跑（Windows 11 / .NET 10.0.401）：构建 0 警告 0 错误，`dotnet test` 199/199 通过；
+`./tools/dev.ps1` 的默认启动、`-Test`、`-NoRun`、`-SkipFfmpeg` 四条路径都跑过。
+
+> 全新 Windows 的 PowerShell 默认执行策略是 `Restricted`，`./tools/*.ps1` 会被拦成
+> 「无法加载文件……禁止运行脚本」。用 `powershell -ExecutionPolicy Bypass -File ./tools/dev.ps1` 绕过。
 
 ## 发布（自带 ffmpeg 的绿色目录）
 
@@ -145,7 +163,8 @@ src/VideoConverter/          # WinUI 3 应用（非打包）
   Styles/Overrides.xaml      # 三主题语义画刷 + 全局控件样式
   Controls/, Helpers/        # 无滚轮误触控件、值转换器
 tests/VideoConverter.Core.Tests/   # 199 个单元测试
-tools/fetch-ffmpeg.ps1       # ffmpeg 二进制获取脚本
+tools/dev.ps1                # 一条命令跑起来：校验 SDK -> 按需补 ffmpeg -> 构建 -> 启动
+tools/fetch-ffmpeg.ps1       # ffmpeg 二进制获取脚本（dev.ps1 按需调用，也可单独执行）
 tools/ui-*.ps1               # UI 自动化辅助（截图 / 操作 / 多档尺寸验收 / AutomationId 契约检查）
 ```
 
