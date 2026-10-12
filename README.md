@@ -1,4 +1,4 @@
-# 视频格式转换器（Windows 桌面端）
+﻿# 视频格式转换器（Windows 桌面端）
 
 基于 **WinUI 3 + C# + .NET 10** 的 Windows 原生桌面工具：加载视频后展示媒体信息与缩略图，
 通过 **ffmpeg 命令行**完成格式转换，支持批量队列、可调编码参数与硬件加速自动探测。
@@ -28,7 +28,7 @@
 
 | 文档 | 内容 |
 |---|---|
-| [SESSION-SUMMARY.md](SESSION-SUMMARY.md) | **会话总结**：需求与功能现状、关键决策记录（含用户反馈）、全功能测试结果、缺陷证据链、已知限制 |
+| [总结文档.md](总结文档.md) | **会话总结**：需求与功能现状、关键决策记录（含用户反馈）、全功能测试结果、缺陷证据链、已知限制 |
 | [docs/session-summary.md](docs/session-summary.md) | 分阶段工程日志（每轮改动的动机、根因与复测） |
 | [.trellis/tasks/10-11-frontend-polish/](.trellis/tasks/10-11-frontend-polish/) | 任务级 PRD / 设计 / 实施计划 / 原型与验收截图 |
 | [.trellis/spec/](.trellis/spec/) | 项目规范（WinUI 3 差异、x:Bind 限制、DPI 单位、断点与主题约定等） |
