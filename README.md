@@ -16,6 +16,22 @@
 - 硬件加速：启动时真实试编码探测（NVENC → QSV → AMF），不可用自动回退软件编码，
   结果缓存到 `%LOCALAPPDATA%`，支持"强制软件编码"与"重新探测"
 - ffmpeg 来源三级策略：随包捆绑 → 仓库 tools 目录 → 系统 PATH，界面明示来源与版本
+- 三页导航：**转换**（工作台：拖放 / 队列 / 输出设置 / 开始转换）、
+  **任务列表**（统计卡 + 状态筛选 + 进度与行内操作）、**设置**
+- 逐项参数覆盖：队列行可单独指定**目标格式与质量**，其余参数仍跟随右侧面板；
+  行内以"已覆盖 / 继承全局"标签标明参数来源，可一键"恢复继承"
+- 队列与设置持久化：`%LOCALAPPDATA%\VideoConverter\{settings,queue}.json`；
+  启动恢复未完成任务并一律置「等待中」，绝不自动开跑
+- 主题（浅色 / 深色 / 跟随系统）、转换完成后打开输出文件夹、开源许可说明
+
+## 文档
+
+| 文档 | 内容 |
+|---|---|
+| [SESSION-SUMMARY.md](SESSION-SUMMARY.md) | **会话总结**：需求与功能现状、关键决策记录（含用户反馈）、全功能测试结果、缺陷证据链、已知限制 |
+| [docs/session-summary.md](docs/session-summary.md) | 分阶段工程日志（每轮改动的动机、根因与复测） |
+| [.trellis/tasks/10-11-frontend-polish/](.trellis/tasks/10-11-frontend-polish/) | 任务级 PRD / 设计 / 实施计划 / 原型与验收截图 |
+| [.trellis/spec/](.trellis/spec/) | 项目规范（WinUI 3 差异、x:Bind 限制、DPI 单位、断点与主题约定等） |
 
 ## 环境要求
 
@@ -56,13 +72,21 @@ dotnet publish src/VideoConverter/VideoConverter.csproj -c Release -o publish/wi
 
 ```
 src/VideoConverter.Core/     # 纯 .NET 类库：与 ffmpeg CLI 交互的全部逻辑（可单测、零第三方依赖）
-  Models/                    # ConversionSettings, VideoEncoder(EncoderCatalog), QueueItem, MediaInfo...
+  Models/                    # ConversionSettings, VideoEncoder(EncoderCatalog), QueueItem, MediaInfo,
+                             # AppSettings, QueueSnapshot
   Services/                  # FfmpegLocator, FfprobeMediaProbeService, FfmpegThumbnailService,
-                             # FfmpegConversionService, ConversionQueue, EncoderProbeService
+                             # FfmpegConversionService, ConversionQueue, EncoderProbeService,
+                             # AppSettingsStore, QueueStore
   Internal/                  # ProcessRunner, ProgressState, MediaInfoMapper
-src/VideoConverter/          # WinUI 3 应用：MainWindow + MainViewModel（CommunityToolkit.Mvvm）
-tests/VideoConverter.Core.Tests/
+src/VideoConverter/          # WinUI 3 应用
+  MainWindow.xaml(.cs)       # 导航壳 + 右下浮层提示 + 主题应用 + 窗口级拖放
+  Views/                     # ConvertPage / QueuePage（任务列表）/ SettingsPage
+  ViewModels/MainViewModel.cs
+  Styles/Overrides.xaml      # 三主题语义画刷 + 全局控件样式
+  Controls/, Helpers/        # 无滚轮误触控件、值转换器
+tests/VideoConverter.Core.Tests/   # 178 个单元测试
 tools/fetch-ffmpeg.ps1       # ffmpeg 二进制获取脚本
+tools/ui-*.ps1               # UI 自动化辅助（截图 / 操作 / 多档尺寸验收）
 ```
 
 设计要点：
