@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using VideoConverter.Core.Models;
 using VideoConverter.Core.Services;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace VideoConverter.ViewModels;
 
@@ -74,7 +75,6 @@ public sealed partial class MainViewModel : ObservableObject
         RebuildEncoderOptions();
         SelectedEncoderOption = EncoderOptions.FirstOrDefault();
         StatusBrush = NormalTextBrush;
-        ProgressSummary = "队列空闲";
         _ = ProbeEncodersAsync();
         RefreshQueueSummary();
     }
@@ -144,7 +144,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>开始转换按钮的可用条件：未在运行且有勾选的待转换任务。</summary>
     public bool CanStartConvert => !IsRunning && SelectedCount > 0;
 
-    /// <summary>开始按钮下方的批次提示，例如：将转换 3 个勾选任务。</summary>
+    /// <summary>操作条左侧的批次提示，例如：参数将应用到 3 个已勾选任务。</summary>
     public string BatchHintText
     {
         get
@@ -155,8 +155,8 @@ public sealed partial class MainViewModel : ObservableObject
             }
 
             return SelectedCount > 0
-                ? $"将转换 {SelectedCount} 个勾选任务"
-                : "未勾选任何任务，请先在队列中勾选";
+                ? $"参数将应用到 {SelectedCount} 个已勾选任务"
+                : "队列中没有勾选任务";
         }
     }
 
@@ -285,7 +285,7 @@ public sealed partial class MainViewModel : ObservableObject
     private bool _isRunning;
 
     [ObservableProperty]
-    private string _progressSummary = "队列空闲";
+    private string _progressSummary = string.Empty;
 
     [ObservableProperty]
     private double _progressPercent;
@@ -860,6 +860,16 @@ public sealed partial class MainViewModel : ObservableObject
         System.Diagnostics.Process.Start(startInfo);
     }
 
+    /// <summary>把 ffmpeg 版本/来源信息复制到剪贴板，便于排查环境问题。</summary>
+    [RelayCommand]
+    private void CopyFfmpegStatus()
+    {
+        var data = new DataPackage();
+        data.SetText(FfmpegStatus);
+        Clipboard.SetContent(data);
+        SetStatus("已复制 ffmpeg 版本信息", false);
+    }
+
     // ---- 队列事件 ----
 
     public void AttachQueueEvents()
@@ -909,11 +919,13 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void OnQueueFinished(QueueSummary summary)
     {
-        ProgressSummary = summary.WasCancelled
+        // 结果只走底部状态栏；进度区回到空闲态，避免与队列摘要重复或自相矛盾
+        var result = summary.WasCancelled
             ? "队列已取消"
             : $"完成 {summary.Completed} 个，失败 {summary.Failed} 个，取消 {summary.Cancelled} 个";
-        SetStatus(ProgressSummary, summary.Failed > 0);
+        SetStatus(result, summary.Failed > 0);
         ProgressPercent = 0;
+        ProgressSummary = string.Empty;
         RefreshQueueSummary();
     }
 

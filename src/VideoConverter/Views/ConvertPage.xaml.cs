@@ -38,4 +38,7 @@ public sealed partial class ConvertPage : Page
             await ViewModel.LoadVideosCommand.ExecuteAsync(files.Select(f => f.Path).ToList());
         }
     }
+
+    /// <summary>开始转换归队列页所有，这里只做导航跳转。</summary>
+    private void GoToQueueButton_Click(object sender, RoutedEventArgs e) => MainWindow.NavigateTo("Queue");
 }

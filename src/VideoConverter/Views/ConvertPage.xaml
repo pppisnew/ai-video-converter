@@ -42,7 +42,7 @@
                     <TextBlock Text="把视频拖到这里" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" />
                     <TextBlock Style="{StaticResource SubtleTextStyle}" HorizontalAlignment="Center"
                                TextAlignment="Center" MaxWidth="420"
-                               Text="支持 mp4 / mov / mkv / avi / webm / flv / wmv / ts 等常见格式，可一次选择多个文件。" />
+                               Text="支持 mp4 / mov / mkv / avi / webm / flv / wmv / ts 等常见格式，可一次选择多个文件；文件会加入队列，在「队列」页开始转换。" />
                     <Button HorizontalAlignment="Center" Style="{StaticResource AccentButtonStyle}" Padding="16,8"
                             Click="PickFileButton_Click"
                             AutomationProperties.Name="选择视频文件" AutomationProperties.AutomationId="PickFileButton">
@@ -93,12 +93,13 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Border Grid.Column="0" Width="220" Height="124" CornerRadius="4" VerticalAlignment="Top"
+                            <Border Grid.Column="0" Width="320" Height="180" CornerRadius="4" VerticalAlignment="Top"
                                     Background="{ThemeResource LayerFillColorDefaultBrush}">
                                 <Image Source="{x:Bind ViewModel.Thumbnail, Mode=OneWay}" Stretch="Uniform" />
                             </Border>
-                            <StackPanel Grid.Column="1" Spacing="4">
-                                <TextBlock FontSize="12" Opacity="0.7">
+                            <!-- 基本信息：只在缩略图右侧的窄列里，加 Wrap 保证三个值都可见 -->
+                            <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Top">
+                                <TextBlock FontSize="12" Opacity="0.7" TextWrapping="Wrap">
                                     <Run Text="{x:Bind ViewModel.DurationText, Mode=OneWay}" />
                                     <Run Text="  ·  " />
                                     <Run Text="{x:Bind ViewModel.ResolutionText, Mode=OneWay}" />
@@ -108,71 +109,72 @@
                                 <TextBlock Text="{x:Bind ViewModel.OutputPathText, Mode=OneWay}" FontSize="11"
                                            Opacity="0.5" TextTrimming="CharacterEllipsis"
                                            ToolTipService.ToolTip="{x:Bind ViewModel.OutputPathText, Mode=OneWay}" />
-                                <Grid ColumnSpacing="6" Margin="0,4,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="90" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="缩略图时间点" FontSize="11" Opacity="0.6" VerticalAlignment="Center" />
-                                    <ctl:NoWheelNumberBox Grid.Column="1" Value="{x:Bind ViewModel.ThumbnailPosition, Mode=TwoWay}"
-                                        Minimum="0" SmallChange="1" LargeChange="5" SpinButtonPlacementMode="Compact"
-                                        AutomationProperties.Name="缩略图时间点" />
-                                    <Button Grid.Column="2" Style="{StaticResource SubtleButtonStyle}" Padding="7,3" FontSize="11"
-                                            Command="{x:Bind ViewModel.CaptureThumbnailCommand, Mode=OneWay}"
-                                            ToolTipService.ToolTip="按当前时间点重新截取缩略图"
-                                            AutomationProperties.Name="重新截取缩略图" AutomationProperties.AutomationId="RecaptureButton">
-                                        <StackPanel Orientation="Horizontal" Spacing="4">
-                                            <FontIcon Glyph="&#xE72C;" FontSize="11" />
-                                            <TextBlock Text="重新截取" />
-                                        </StackPanel>
-                                    </Button>
-                                </Grid>
-
-                                <!-- 详细信息：键值两列铺满卡片宽度，值左对齐 -->
-                                <Expander Margin="-12,4,-12,0" HorizontalAlignment="Stretch"
-                                          AutomationProperties.Name="详细信息">
-                                    <Expander.Header>
-                                        <TextBlock Text="详细信息" FontSize="12" />
-                                    </Expander.Header>
-                                    <Grid ColumnSpacing="24" RowSpacing="5" Margin="0,4,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                        </Grid.RowDefinitions>
-                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="大小" Style="{StaticResource SubtleTextStyle}" />
-                                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{x:Bind ViewModel.FileSizeText, Mode=OneWay}" FontSize="12" />
-                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="容器格式" Style="{StaticResource SubtleTextStyle}" />
-                                        <TextBlock Grid.Row="0" Grid.Column="3" Text="{x:Bind ViewModel.ContainerText, Mode=OneWay}" FontSize="12" />
-                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="时长" Style="{StaticResource SubtleTextStyle}" />
-                                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{x:Bind ViewModel.DurationText, Mode=OneWay}" FontSize="12" />
-                                        <TextBlock Grid.Row="1" Grid.Column="2" Text="分辨率" Style="{StaticResource SubtleTextStyle}" />
-                                        <TextBlock Grid.Row="1" Grid.Column="3" Text="{x:Bind ViewModel.ResolutionText, Mode=OneWay}" FontSize="12" />
-                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="帧率" Style="{StaticResource SubtleTextStyle}" />
-                                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{x:Bind ViewModel.FrameRateText, Mode=OneWay}" FontSize="12" />
-                                        <TextBlock Grid.Row="2" Grid.Column="2" Text="视频编码" Style="{StaticResource SubtleTextStyle}" />
-                                        <TextBlock Grid.Row="2" Grid.Column="3" Text="{x:Bind ViewModel.VideoCodecText, Mode=OneWay}" FontSize="12" />
-                                        <TextBlock Grid.Row="3" Grid.Column="0" Text="音频编码" Style="{StaticResource SubtleTextStyle}" />
-                                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{x:Bind ViewModel.AudioCodecText, Mode=OneWay}" FontSize="12" />
-                                        <TextBlock Grid.Row="3" Grid.Column="2" Text="声道数" Style="{StaticResource SubtleTextStyle}" />
-                                        <TextBlock Grid.Row="3" Grid.Column="3" Text="{x:Bind ViewModel.AudioChannelsText, Mode=OneWay}" FontSize="12" />
-                                        <TextBlock Grid.Row="4" Grid.Column="0" Text="总码率" Style="{StaticResource SubtleTextStyle}" />
-                                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{x:Bind ViewModel.BitRateText, Mode=OneWay}" FontSize="12" />
-                                        <TextBlock Grid.Row="4" Grid.Column="2" Text="输出路径" Style="{StaticResource SubtleTextStyle}" />
-                                        <TextBlock Grid.Row="4" Grid.Column="3" Text="{x:Bind ViewModel.OutputPathText, Mode=OneWay}" FontSize="12"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   ToolTipService.ToolTip="{x:Bind ViewModel.OutputPathText, Mode=OneWay}" />
-                                    </Grid>
-                                </Expander>
                             </StackPanel>
                         </Grid>
+
+                        <!-- 缩略图时间点：单独一行横跨整卡，窄列里放不下会把按钮挤出卡片 -->
+                        <Grid ColumnSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="缩略图时间点" FontSize="11" Opacity="0.6" VerticalAlignment="Center" />
+                            <ctl:NoWheelNumberBox Grid.Column="1" Value="{x:Bind ViewModel.ThumbnailPosition, Mode=TwoWay}"
+                                Minimum="0" SmallChange="1" LargeChange="5" SpinButtonPlacementMode="Compact"
+                                AutomationProperties.Name="缩略图时间点" />
+                            <Button Grid.Column="2" Style="{StaticResource SubtleButtonStyle}" Padding="7,3" FontSize="11"
+                                    Command="{x:Bind ViewModel.CaptureThumbnailCommand, Mode=OneWay}"
+                                    ToolTipService.ToolTip="按当前时间点重新截取缩略图"
+                                    AutomationProperties.Name="重新截取缩略图" AutomationProperties.AutomationId="RecaptureButton">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <FontIcon Glyph="&#xE72C;" FontSize="11" />
+                                    <TextBlock Text="重新截取" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <!-- 详细信息：键值两列铺满卡片宽度，值左对齐 -->
+                        <Expander HorizontalAlignment="Stretch" AutomationProperties.Name="详细信息">
+                            <Expander.Header>
+                                <TextBlock Text="详细信息" FontSize="12" />
+                            </Expander.Header>
+                            <Grid ColumnSpacing="24" RowSpacing="5" Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="大小" Style="{StaticResource SubtleTextStyle}" />
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{x:Bind ViewModel.FileSizeText, Mode=OneWay}" FontSize="12" />
+                                <TextBlock Grid.Row="0" Grid.Column="2" Text="容器格式" Style="{StaticResource SubtleTextStyle}" />
+                                <TextBlock Grid.Row="0" Grid.Column="3" Text="{x:Bind ViewModel.ContainerText, Mode=OneWay}" FontSize="12" />
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="时长" Style="{StaticResource SubtleTextStyle}" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{x:Bind ViewModel.DurationText, Mode=OneWay}" FontSize="12" />
+                                <TextBlock Grid.Row="1" Grid.Column="2" Text="分辨率" Style="{StaticResource SubtleTextStyle}" />
+                                <TextBlock Grid.Row="1" Grid.Column="3" Text="{x:Bind ViewModel.ResolutionText, Mode=OneWay}" FontSize="12" />
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="帧率" Style="{StaticResource SubtleTextStyle}" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{x:Bind ViewModel.FrameRateText, Mode=OneWay}" FontSize="12" />
+                                <TextBlock Grid.Row="2" Grid.Column="2" Text="视频编码" Style="{StaticResource SubtleTextStyle}" />
+                                <TextBlock Grid.Row="2" Grid.Column="3" Text="{x:Bind ViewModel.VideoCodecText, Mode=OneWay}" FontSize="12" />
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="音频编码" Style="{StaticResource SubtleTextStyle}" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{x:Bind ViewModel.AudioCodecText, Mode=OneWay}" FontSize="12" />
+                                <TextBlock Grid.Row="3" Grid.Column="2" Text="声道数" Style="{StaticResource SubtleTextStyle}" />
+                                <TextBlock Grid.Row="3" Grid.Column="3" Text="{x:Bind ViewModel.AudioChannelsText, Mode=OneWay}" FontSize="12" />
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="总码率" Style="{StaticResource SubtleTextStyle}" />
+                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{x:Bind ViewModel.BitRateText, Mode=OneWay}" FontSize="12" />
+                                <TextBlock Grid.Row="4" Grid.Column="2" Text="输出路径" Style="{StaticResource SubtleTextStyle}" />
+                                <TextBlock Grid.Row="4" Grid.Column="3" Text="{x:Bind ViewModel.OutputPathText, Mode=OneWay}" FontSize="12"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTipService.ToolTip="{x:Bind ViewModel.OutputPathText, Mode=OneWay}" />
+                            </Grid>
+                        </Expander>
                     </StackPanel>
                 </Border>
 
@@ -284,7 +286,8 @@
             </Grid>
         </ScrollViewer>
 
-        <!-- 固定操作条：位于 ScrollViewer 之外，窗口再矮"开始转换"也不会滚走 -->
+        <!-- 固定操作条：位于 ScrollViewer 之外，窗口再矮也不会滚走。
+             空闲态：入队入口 + 前往队列（开始转换只在队列页）；运行态：取消当前 / 全部停止 + 进度 -->
         <Border Grid.Row="1" Background="{ThemeResource LayerFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
             <Grid Padding="24,10">
@@ -297,6 +300,7 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
                             <TextBlock Text="{x:Bind ViewModel.BatchHintText, Mode=OneWay}" Style="{StaticResource SubtleTextStyle}" />
@@ -304,6 +308,7 @@
                                        Visibility="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
                         </StackPanel>
                         <Button Grid.Column="1" Padding="12,8" Style="{StaticResource SubtleButtonStyle}"
+                                Visibility="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
                                 Command="{x:Bind ViewModel.CancelCurrentCommand, Mode=OneWay}"
                                 IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay}"
                                 ToolTipService.ToolTip="取消当前任务，队列继续" AutomationProperties.Name="取消当前">
@@ -313,6 +318,8 @@
                             </StackPanel>
                         </Button>
                         <Button Grid.Column="2" Padding="12,8" Style="{StaticResource SubtleButtonStyle}"
+                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                Visibility="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
                                 Command="{x:Bind ViewModel.CancelAllCommand, Mode=OneWay}"
                                 IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay}"
                                 ToolTipService.ToolTip="停止整个队列" AutomationProperties.Name="全部停止">
@@ -321,13 +328,24 @@
                                 <TextBlock Text="全部停止" />
                             </StackPanel>
                         </Button>
-                        <Button Grid.Column="3" Padding="16,8" Style="{StaticResource AccentButtonStyle}"
-                                Command="{x:Bind ViewModel.ConvertCommand, Mode=OneWay}"
-                                IsEnabled="{x:Bind ViewModel.CanStartConvert, Mode=OneWay}"
-                                AutomationProperties.Name="开始转换" AutomationProperties.AutomationId="ConvertButton">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon Glyph="&#xE768;" FontSize="15" />
-                                <TextBlock Text="开始转换" />
+                        <Button Grid.Column="3" Padding="12,8" Style="{StaticResource DefaultButtonStyle}"
+                                Visibility="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource BoolToVisibilityInverse}}"
+                                Click="PickFileButton_Click"
+                                ToolTipService.ToolTip="选择视频文件并加入转换队列"
+                                AutomationProperties.Name="添加视频到队列" AutomationProperties.AutomationId="AddToQueueButton">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE710;" FontSize="13" />
+                                <TextBlock Text="添加视频到队列" />
+                            </StackPanel>
+                        </Button>
+                        <Button Grid.Column="4" Padding="12,8" Style="{StaticResource SubtleButtonStyle}"
+                                Visibility="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource BoolToVisibilityInverse}}"
+                                Click="GoToQueueButton_Click"
+                                ToolTipService.ToolTip="前往队列页开始转换"
+                                AutomationProperties.Name="前往队列" AutomationProperties.AutomationId="GoToQueueButton">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE72A;" FontSize="13" />
+                                <TextBlock Text="前往队列" />
                             </StackPanel>
                         </Button>
                     </Grid>

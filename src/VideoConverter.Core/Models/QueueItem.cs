@@ -78,6 +78,16 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
 
     public bool IsCompleted => State == QueueItemState.Completed;
 
+    /// <summary>队列项进度条取值：等待中 0%、转换中实时百分比、已完成 100%、失败保持最后值。</summary>
+    public double ProgressValue => State switch
+    {
+        QueueItemState.Pending => 0,
+        QueueItemState.Converting => Progress?.Percent ?? 0,
+        QueueItemState.Completed => 100,
+        QueueItemState.Failed => Progress?.Percent ?? 0,
+        _ => 0,
+    };
+
     /// <summary>是否未在转换中（驱动单项删除按钮的可见性）。</summary>
     public bool IsNotConverting => State != QueueItemState.Converting;
 
@@ -121,6 +131,7 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
         Progress = progress;
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Progress)));
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(StateText)));
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(ProgressValue)));
     }
 
     public void MarkCompleted(string usedEncoder)
@@ -160,7 +171,8 @@ public sealed class QueueItem : System.ComponentModel.INotifyPropertyChanged
     {
         foreach (var name in new[]
         {
-            nameof(State), nameof(StateText), nameof(IsCompleted), nameof(IsNotConverting), nameof(Progress), nameof(Error), nameof(UsedEncoder),
+            nameof(State), nameof(StateText), nameof(IsCompleted), nameof(IsNotConverting), nameof(Progress),
+            nameof(ProgressValue), nameof(Error), nameof(UsedEncoder),
         })
         {
             PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));

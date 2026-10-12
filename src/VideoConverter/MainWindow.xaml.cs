@@ -96,6 +96,27 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// 供页面按 Tag 切换导航项（如 ConvertPage 的"前往队列"）。
+    /// 设置 SelectedItem 会走既有 SelectionChanged 路径，保证标题与 Frame 同步。
+    /// </summary>
+    internal static void NavigateTo(string tag)
+    {
+        if (App.MainWindow is not MainWindow window)
+        {
+            return;
+        }
+
+        foreach (var menuItem in window.NavView.MenuItems)
+        {
+            if (menuItem is NavigationViewItem item && item.Tag is string t && t == tag)
+            {
+                window.NavView.SelectedItem = item;
+                return;
+            }
+        }
+    }
+
     // 拖拽挂在窗口根 Grid 上：任何页面都可直接拖入视频文件
     private void Root_DragOver(object sender, DragEventArgs e)
     {

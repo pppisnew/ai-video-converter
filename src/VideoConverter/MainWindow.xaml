@@ -38,7 +38,7 @@
             </StackPanel>
         </Grid>
 
-        <NavigationView Grid.Row="1"
+        <NavigationView x:Name="NavView" Grid.Row="1"
                         IsBackButtonVisible="Collapsed"
                         IsSettingsVisible="False"
                         PaneDisplayMode="Auto"
